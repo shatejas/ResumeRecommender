@@ -1,0 +1,34 @@
+Senior Data Scientist – Personalization & Recommendations
+
+Location: Seattle, WA (Hybrid)
+Company: TechNova Inc.
+
+About the Role:
+We are looking for a Senior Data Scientist to join our Personalization team. You will design and deploy machine learning models that power real-time product recommendations for 50M+ users. You will work closely with engineering, product, and business teams to translate complex data into actionable insights and scalable ML solutions.
+
+Responsibilities:
+- Build and deploy end-to-end ML pipelines for recommendation systems using collaborative filtering, deep learning, and transformer-based models
+- Conduct A/B experiments to measure model impact on key business metrics (CTR, conversion, revenue)
+- Develop and maintain feature engineering pipelines processing 10TB+ daily event data
+- Perform exploratory data analysis to identify trends, anomalies, and opportunities
+- Optimize model inference latency for real-time serving at scale
+- Mentor junior data scientists and contribute to team best practices
+- Present findings and recommendations to senior leadership
+
+Requirements:
+- MS or PhD in Computer Science, Statistics, Machine Learning, or related field
+- 5+ years of experience in applied machine learning or data science
+- Strong proficiency in Python, SQL, and ML frameworks (PyTorch, TensorFlow, scikit-learn)
+- Experience with large-scale data processing (Spark, Hadoop, or equivalent)
+- Hands-on experience with recommendation systems or NLP
+- Familiarity with cloud platforms (AWS SageMaker, EMR, S3, Redshift)
+- Experience with experiment design and statistical analysis (hypothesis testing, causal inference)
+- Strong communication skills with ability to explain technical concepts to non-technical stakeholders
+
+Nice to Have:
+- Experience with LLMs and retrieval-augmented generation (RAG)
+- Knowledge of MLOps tools (MLflow, Kubeflow, Airflow)
+- Publications in top ML/AI conferences (NeurIPS, ICML, KDD)
+- Experience with real-time serving infrastructure (Kafka, Flink, Redis)
+
+Compensation: $180,000 – $240,000 base + equity + benefits

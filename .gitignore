@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.resume_folder
+*.pdf
+.DS_Store
+*.iml
+.idea/
+.vscode/
