@@ -25,11 +25,10 @@ ollama pull "$OLLAMA_MODEL"
 ollama pull nomic-embed-text
 
 # 3. Start OpenSearch
-# 3. Start OpenSearch
 echo -e "\n[3/5] Starting OpenSearch..."
 docker-compose up -d
 
-echo -e "Waiting for OpenSearch to be ready..."
+echo "Waiting for OpenSearch to be ready..."
 retries=0
 max_retries=15
 until curl -s http://localhost:9200 >/dev/null 2>&1; do
@@ -50,4 +49,6 @@ pip install -r requirements.txt
 echo -e "\n[5/5] Ingesting resumes from: $RESUME_FOLDER"
 python ingest.py "$RESUME_FOLDER"
 
-echo -e "\n=== Setup complete! Run 'python main.py' to generate resumes ==="
+echo -e "\n=== Setup complete! ==="
+echo "  CLI:  python main.py test/sample_jd.txt"
+echo "  Web:  streamlit run app.py"

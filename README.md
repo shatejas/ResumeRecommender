@@ -25,10 +25,13 @@ This will:
 ## Usage
 
 ```bash
-# From a file
+# Web UI
+streamlit run app.py
+
+# CLI — from a file
 python main.py test/sample_jd.txt
 
-# Interactive (paste JD, press Enter twice)
+# CLI — interactive (paste JD, press Enter twice)
 python main.py
 ```
 
@@ -62,7 +65,8 @@ The generated `.docx` uses professional formatting extracted from your existing 
 ├── docker-compose.yml     # OpenSearch 3.5 container
 ├── requirements.txt       # Python dependencies
 ├── ingest.py              # Extract skills/experience and index resumes
-├── main.py                # Search, score, generate, refine, export
+├── app.py                 # Streamlit web UI
+├── main.py                # CLI entry point
 ├── test/
 │   └── sample_jd.txt     # Sample job description for testing
 └── src/
@@ -93,3 +97,4 @@ Edit `src/config.py` to change:
 - **Vector Store**: OpenSearch 3.5 (Docker) — hybrid search with nested kNN + BM25
 - **Framework**: LangChain
 - **Output**: python-docx
+- **UI**: Streamlit
