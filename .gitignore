@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 .resume_folder
 *.pdf
+*.docx
 .DS_Store
 *.iml
 .idea/
 .vscode/
+.git/

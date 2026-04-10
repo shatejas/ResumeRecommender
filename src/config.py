@@ -2,28 +2,23 @@
 
 from pathlib import Path
 
-# OpenSearch settings
+# OpenSearch
 OPENSEARCH_HOST = "localhost"
 OPENSEARCH_PORT = 9200
 OPENSEARCH_INDEX = "resumes"
 
-# Ollama settings
-OLLAMA_MODEL = "llama3.2"  # Change to your preferred model
+# Ollama
+OLLAMA_MODEL = "mistral:7b"
 OLLAMA_BASE_URL = "http://localhost:11434"
+EMBEDDING_MODEL = "nomic-embed-text"
 
-# Embedding model (runs locally via sentence-transformers)
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-
-# Chunking settings
+# Chunking
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
-# Ingestion settings
-INGEST_BATCH_SIZE = 10  # Number of resume files per batch
+# Ingestion
+INGEST_BATCH_SIZE = 10
 
-# Resume folder (set during ingestion)
-def _read_resume_folder():
-    path = Path(__file__).parent.parent / ".resume_folder"
-    return path.read_text().strip() if path.exists() else "."
-
-RESUME_FOLDER = _read_resume_folder()
+# Resume folder (saved during ingestion, read at generation time)
+_FOLDER_FILE = Path(__file__).parent.parent / ".resume_folder"
+RESUME_FOLDER = _FOLDER_FILE.read_text().strip() if _FOLDER_FILE.exists() else "."
