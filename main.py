@@ -54,8 +54,11 @@ def main():
         print(f"  ATS Score: {score}/100\n")
 
         if score >= MIN_ATS_SCORE:
+            source = r["source"]
+            full_path = Path(RESUME_FOLDER) / Path(source).name
+            display_path = str(full_path) if full_path.exists() else source
             print(f"✅ Existing resume scores {score}/100. No generation needed!")
-            print(f"📄 Use: {r['source']}")
+            print(f"📄 Use: {display_path}")
             return
 
     # Step 2: Generate and refine

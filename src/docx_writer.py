@@ -253,3 +253,94 @@ def save_resume_docx(resume_text: str, output_path: str):
         content_index += 1
 
     doc.save(output_path)
+
+
+def resume_to_html(resume_text: str) -> str:
+    """Convert resume text to styled HTML for preview."""
+    lines = resume_text.strip().splitlines()
+    html = ['<div style="font-family: Times New Roman, serif; font-size: 10pt; '
+            'line-height: 1.4; max-width: 700px; margin: 0 auto; padding: 20px; '
+            'background: white; border: 1px solid #ddd; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">']
+    content_index = 0
+    current_section = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        cleaned = _clean_markdown(stripped)
+        if not cleaned:
+            continue
+
+        esc = cleaned.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        if content_index == 0:
+            html.append(f'<h1 style="text-align:center; font-size:16pt; margin:0 0 2px 0;">{esc}</h1>')
+            content_index += 1
+            continue
+
+        if content_index == 1 and not _is_section_header(stripped):
+            html.append(f'<p style="text-align:center; margin:0 0 8px 0; font-size:9pt;">{esc}</p>')
+            content_index += 1
+            continue
+
+        if _is_section_header(stripped):
+            current_section = _get_section_type(stripped)
+            html.append(f'<h2 style="font-size:11pt; border-bottom:1px solid #666; '
+                        f'padding-bottom:2px; margin:10px 0 4px 0;">{esc.upper()}</h2>')
+            content_index += 1
+            continue
+
+        match = EXPERIENCE_LINE_RE.match(cleaned)
+        if match:
+            current_section = ""
+            company = match.group(1).strip().rstrip("|").strip().replace("&", "&amp;").replace("<", "&lt;")
+            dates = match.group(2).strip().replace("&", "&amp;").replace("<", "&lt;")
+            html.append(f'<p style="margin:6px 0 1px 0; display:flex; justify-content:space-between;">'
+                        f'<b>{company}</b><i>{dates}</i></p>')
+            content_index += 1
+            continue
+
+        if current_section == "skills" and not _is_bullet(stripped):
+            skill_match = SKILL_LINE_RE.match(cleaned)
+            if skill_match:
+                cat = skill_match.group(1).strip().replace("&", "&amp;").replace("<", "&lt;")
+                items = skill_match.group(2).strip().replace("&", "&amp;").replace("<", "&lt;")
+                html.append(f'<p style="margin:1px 0 1px 15px;">• <b>{cat}:</b> {items}</p>')
+            else:
+                html.append(f'<p style="margin:1px 0 1px 15px;">• {esc}</p>')
+            content_index += 1
+            continue
+
+        if current_section == "education" and not _is_section_header(stripped):
+            date_match = EDU_DATE_RE.search(cleaned)
+            if date_match:
+                date = date_match.group(0).strip().lstrip(",").strip().replace("&", "&amp;")
+                main = cleaned[:date_match.start()].rstrip(", \u2014-\u2013\t ").replace("&", "&amp;").replace("<", "&lt;")
+                html.append(f'<p style="margin:2px 0; display:flex; justify-content:space-between;">'
+                            f'<b>{main}</b><i>{date}</i></p>')
+            else:
+                html.append(f'<p style="margin:2px 0;"><b>{esc}</b></p>')
+            content_index += 1
+            continue
+
+        if _is_bullet(stripped):
+            bullet = _clean_bullet(cleaned).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            if current_section == "skills":
+                skill_match = SKILL_LINE_RE.match(_clean_bullet(cleaned))
+                if skill_match:
+                    cat = skill_match.group(1).strip().replace("&", "&amp;")
+                    items = skill_match.group(2).strip().replace("&", "&amp;")
+                    html.append(f'<p style="margin:1px 0 1px 15px;">• <b>{cat}:</b> {items}</p>')
+                else:
+                    html.append(f'<p style="margin:1px 0 1px 15px;">• {bullet}</p>')
+            else:
+                html.append(f'<p style="margin:1px 0 1px 20px;">• {bullet}</p>')
+            content_index += 1
+            continue
+
+        html.append(f'<p style="margin:2px 0;">{esc}</p>')
+        content_index += 1
+
+    html.append('</div>')
+    return "\n".join(html)

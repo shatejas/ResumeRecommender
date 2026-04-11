@@ -1,10 +1,10 @@
 """RAG chain for ATS-optimized resume generation."""
 
 import re
+from typing import Optional
 from langchain_ollama import ChatOllama
 from langchain.prompts import PromptTemplate
 from src.config import OLLAMA_MODEL, OLLAMA_BASE_URL
-from src.vector_store import search_resumes
 
 RESUME_PROMPT = PromptTemplate(
     input_variables=["skills", "experience", "context", "question"],
@@ -163,7 +163,16 @@ Output the improved resume now:""",
 )
 
 
-from typing import Optional
+# LLM provider state — set by UI or defaults to Ollama
+_llm_provider = "ollama"
+_api_key = ""
+
+
+def set_llm_provider(provider: str, api_key: str = ""):
+    """Set the LLM provider. Called from the UI."""
+    global _llm_provider, _api_key
+    _llm_provider = provider
+    _api_key = api_key
 
 
 def _parse_feedback(feedback: str) -> dict:
@@ -190,7 +199,21 @@ def _parse_feedback(feedback: str) -> dict:
     return result
 
 
-def _get_llm(temperature: Optional[float] = None) -> ChatOllama:
+def _get_llm(temperature: Optional[float] = None):
+    if _llm_provider == "gemini" and _api_key:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        kwargs = {"model": "gemini-2.5-flash", "google_api_key": _api_key}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatGoogleGenerativeAI(**kwargs)
+
+    if _llm_provider == "openai" and _api_key:
+        from langchain_openai import ChatOpenAI
+        kwargs = {"model": "gpt-4o-mini", "api_key": _api_key}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatOpenAI(**kwargs)
+
     kwargs = {"model": OLLAMA_MODEL, "base_url": OLLAMA_BASE_URL}
     if temperature is not None:
         kwargs["temperature"] = temperature
@@ -211,14 +234,11 @@ def _collect_structured_data(results: list[dict]) -> tuple[str, str]:
     return "\n".join(sorted(all_skills)), "\n\n".join(all_experience)
 
 
-def generate_resume(job_description: str) -> tuple[str, str, str]:
+def generate_resume(job_description: str, results: list = None) -> tuple[str, str, str]:
     """Generate an ATS-optimized resume. Returns (resume, skills, experience)."""
-    results = search_resumes(job_description)
-
-    print("--- Retrieved Sources ---")
-    for r in results:
-        print(f"  • {r['source']}")
-    print("--- End Sources ---\n")
+    if results is None:
+        from src.vector_store import search_resumes
+        results = search_resumes(job_description)
 
     skills, experience = _collect_structured_data(results)
     context = "\n\n---\n\n".join(r["content"] for r in results)

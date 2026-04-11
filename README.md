@@ -11,29 +11,31 @@ RAG pipeline that generates ATS-optimized resumes based on job descriptions usin
 ## Setup
 
 ```bash
-./setup.sh /path/to/your/resumes/folder
+./setup.sh
 ```
 
 This will:
-1. Install Ollama (if not present)
+1. Install Ollama and Docker (if not present)
 2. Pull the mistral:7b and nomic-embed-text models
 3. Start OpenSearch 3.5 via Docker
 4. Install Python dependencies
-5. Extract skills and experience from your resumes
-6. Ingest your resumes into the vector store with hybrid search support
+5. Launch the Web UI
 
 ## Usage
 
 ```bash
 # Web UI
-streamlit run app.py
+python app.py
 
-# CLI — from a file
+# CLI — ingest resumes first, then generate
+python ingest.py /path/to/your/resumes/folder
 python main.py test/sample_jd.txt
 
 # CLI — interactive (paste JD, press Enter twice)
 python main.py
 ```
+
+In the Web UI, use the sidebar to upload and ingest resumes, then paste a job description to generate.
 
 ## How It Works
 
@@ -58,6 +60,16 @@ The generated `.docx` uses professional formatting extracted from your existing 
 - Education with bold degree | university and right-aligned graduation date
 - Compact layout with professional formatting
 
+## LLM Providers
+
+Switch between providers in the Web UI sidebar:
+
+| Provider | Model | Cost | Setup |
+|----------|-------|------|-------|
+| **Ollama** (default) | mistral:7b | Free | Included in setup |
+| **Gemini** | gemini-2.5-flash | Free tier | [Get API key](https://aistudio.google.com/apikey) |
+| **ChatGPT** | gpt-4o-mini | Pay per use | [Get API key](https://platform.openai.com/api-keys) |
+
 ## Project Structure
 
 ```
@@ -65,7 +77,7 @@ The generated `.docx` uses professional formatting extracted from your existing 
 ├── docker-compose.yml     # OpenSearch 3.5 container
 ├── requirements.txt       # Python dependencies
 ├── ingest.py              # Extract skills/experience and index resumes
-├── app.py                 # Streamlit web UI
+├── app.py                 # Gradio web UI
 ├── main.py                # CLI entry point
 ├── test/
 │   └── sample_jd.txt     # Sample job description for testing
@@ -92,9 +104,9 @@ Edit `src/config.py` to change:
 
 ## Tech Stack
 
-- **LLM**: Ollama (mistral:7b) — free, local
+- **LLM**: Ollama (mistral:7b) / Gemini / ChatGPT — switchable
 - **Embeddings**: Ollama (nomic-embed-text) — free, local
 - **Vector Store**: OpenSearch 3.5 (Docker) — hybrid search with nested kNN + BM25
 - **Framework**: LangChain
 - **Output**: python-docx
-- **UI**: Streamlit
+- **UI**: Gradio

@@ -2,7 +2,7 @@
 
 from opensearchpy import OpenSearch
 from langchain_ollama import OllamaEmbeddings
-from langchain.schema import BaseRetriever, Document
+from langchain.schema import Document
 from src.config import (
     OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX, EMBEDDING_MODEL
 )
@@ -14,6 +14,7 @@ INDEX_MAPPING = {
     "mappings": {
         "properties": {
             "source": {"type": "keyword"},
+            "original_path": {"type": "keyword"},
             "skills": {"type": "text"},
             "experience": {"type": "text"},
             "chunks": {
@@ -73,7 +74,27 @@ def ensure_index():
     ensure_search_pipeline()
 
 
-def index_resume(source: str, skills: str, experience: str, chunks: list[Document]):
+def ensure_index_exists():
+    """Create the index only if it doesn't exist. Does not delete existing data."""
+    client = get_client()
+    if not client.indices.exists(OPENSEARCH_INDEX):
+        client.indices.create(OPENSEARCH_INDEX, body=INDEX_MAPPING)
+    ensure_search_pipeline()
+
+
+def resume_exists(source: str) -> bool:
+    """Check if a resume with this source name is already indexed."""
+    client = get_client()
+    if not client.indices.exists(OPENSEARCH_INDEX):
+        return False
+    resp = client.search(
+        index=OPENSEARCH_INDEX,
+        body={"size": 0, "query": {"term": {"source": source}}},
+    )
+    return resp["hits"]["total"]["value"] > 0
+
+
+def index_resume(source: str, skills: str, experience: str, chunks: list[Document], original_path: str = ""):
     """Index a single resume with structured skills/experience and nested chunks."""
     client = get_client()
     embeddings = get_embeddings()
@@ -84,6 +105,7 @@ def index_resume(source: str, skills: str, experience: str, chunks: list[Documen
         index=OPENSEARCH_INDEX,
         body={
             "source": source,
+            "original_path": original_path or source,
             "skills": skills,
             "experience": experience,
             "chunks": [{"text": t, "embedding": v} for t, v in zip(texts, vectors)],
@@ -130,6 +152,7 @@ def search_resumes(query: str, k: int = 3) -> list[dict]:
     return [
         {
             "source": hit["_source"]["source"],
+            "original_path": hit["_source"].get("original_path", ""),
             "skills": hit["_source"].get("skills", ""),
             "experience": hit["_source"].get("experience", ""),
             "content": "\n\n".join(c["text"] for c in hit["_source"]["chunks"]),
@@ -137,17 +160,3 @@ def search_resumes(query: str, k: int = 3) -> list[dict]:
         for hit in resp["hits"]["hits"]
     ]
 
-
-class ResumeRetriever(BaseRetriever):
-    """Custom retriever for the RAG chain. Returns content as Documents."""
-    k: int = 3
-
-    def _get_relevant_documents(self, query: str, **kwargs) -> list[Document]:
-        results = search_resumes(query, self.k)
-        return [
-            Document(
-                page_content=r["content"],
-                metadata={"source": r["source"], "skills": r["skills"], "experience": r["experience"]},
-            )
-            for r in results
-        ]
