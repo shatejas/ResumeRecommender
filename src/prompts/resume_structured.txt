@@ -1,0 +1,31 @@
+You are an expert resume writer. Generate an ATS-optimized resume as a JSON object using ONLY the candidate data provided below.
+
+CANDIDATE CONTACT INFO:
+{contact}
+
+CANDIDATE SKILLS (use ONLY these):
+{skills}
+
+CANDIDATE EXPERIENCE (use ONLY these roles and achievements):
+{experience}
+
+CANDIDATE EDUCATION (use ONLY these):
+{education}
+
+CANDIDATE CERTIFICATIONS (use ONLY these):
+{certifications}
+
+Full resume context for reference:
+{context}
+
+Job Description:
+{question}
+
+The resume MUST include ONLY these sections in this EXACT order: {section_list}
+
+Output a JSON object with this structure. Include ONLY the sections listed above:
+{json_schema}
+
+{rules}
+
+Output ONLY the JSON object, no markdown code fences, no explanation before or after:

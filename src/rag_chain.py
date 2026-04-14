@@ -1,11 +1,13 @@
 """RAG chain for ATS-optimized resume generation."""
 
+import json
 import re
 from typing import Optional
 from langchain_ollama import ChatOllama
 from src.config import OLLAMA_MODEL, OLLAMA_BASE_URL
-from src.prompts import RESUME_PROMPT, ATS_SCORE_PROMPT, REFINE_PROMPT
+from src.prompts import RESUME_PROMPT, RESUME_STRUCTURED_PROMPT, ATS_SCORE_PROMPT, REFINE_PROMPT, build_json_schema
 from src.candidate import load_candidate, format_contact, format_education, format_certifications
+from src.resume_model import ResumeData
 
 
 # LLM provider state — set by UI or defaults to Ollama
@@ -59,18 +61,26 @@ def _get_llm(temperature: Optional[float] = None):
             kwargs["temperature"] = temperature
         return ChatOpenAI(**kwargs)
 
+    if _llm_provider == "claude" and _api_key:
+        from langchain_anthropic import ChatAnthropic
+        kwargs = {"model": "claude-sonnet-4-20250514", "api_key": _api_key}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatAnthropic(**kwargs)
+
     kwargs = {"model": OLLAMA_MODEL, "base_url": OLLAMA_BASE_URL}
     if temperature is not None:
         kwargs["temperature"] = temperature
     return ChatOllama(**kwargs)
 
 
-def _collect_structured_data(results: list[dict]) -> tuple[str, str, str, str]:
-    """Aggregate skills, experience, education, and certifications from search results."""
+def _collect_structured_data(results: list[dict]) -> tuple[str, str, str, str, str]:
+    """Aggregate skills, experience, education, certifications, and projects from search results."""
     all_skills = set()
     all_experience = []
     all_education = []
     all_certifications = []
+    all_projects = []
 
     for r in results:
         if r["skills"]:
@@ -81,13 +91,84 @@ def _collect_structured_data(results: list[dict]) -> tuple[str, str, str, str]:
             all_education.append(r["education"])
         if r.get("certifications"):
             all_certifications.append(r["certifications"])
+        if r.get("projects"):
+            all_projects.append(r["projects"])
 
     return (
         "\n".join(sorted(all_skills)),
         "\n\n".join(all_experience),
         "\n".join(all_education),
         "\n".join(all_certifications),
+        "\n\n".join(all_projects),
     )
+
+
+def _parse_resume_json(text: str):
+    """Try to parse ResumeData from LLM response text."""
+    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
+    text = re.sub(r"\s*```$", "", text.strip())
+    try:
+        return ResumeData(**json.loads(text))
+    except (json.JSONDecodeError, Exception):
+        return None
+
+
+def _get_prompt_vars(job_description, results, candidate_yaml):
+    """Build shared prompt variables from search results and candidate data."""
+    skills, experience, education, certifications, projects = _collect_structured_data(results)
+    context = "\n\n---\n\n".join(r["content"] for r in results)
+
+    candidate = load_candidate(candidate_yaml)
+    contact = format_contact(candidate)
+    yml_education = format_education(candidate)
+    yml_certifications = format_certifications(candidate)
+    if yml_education:
+        education = yml_education
+    if yml_certifications:
+        certifications = yml_certifications
+
+    return dict(
+        contact=contact, skills=skills, experience=experience,
+        education=education, certifications=certifications,
+        context=context, question=job_description,
+    )
+
+
+def generate_resume_structured(job_description: str, results: list = None,
+                               candidate_yaml: str = ""):
+    """Generate a structured ResumeData object.
+    Uses with_structured_output for API providers, JSON parsing for Ollama.
+    Returns (ResumeData or None, skills, experience).
+    """
+    if results is None:
+        from src.vector_store import search_resumes
+        results = search_resumes(job_description)
+
+    prompt_vars = _get_prompt_vars(job_description, results, candidate_yaml)
+
+    # Get section order from candidate config
+    candidate = load_candidate(candidate_yaml)
+    from src.candidate import get_sections
+    sections = get_sections(candidate)
+    sections_str = ", ".join(s.upper() for s in sections)
+
+    # API providers: use with_structured_output for reliable JSON
+    if _llm_provider in ("gemini", "openai", "claude") and _api_key:
+        llm = _get_llm()
+        structured_llm = llm.with_structured_output(ResumeData)
+        prompt = RESUME_PROMPT.format(**prompt_vars)
+        prompt += f"\n\nThe resume MUST include ONLY these sections in this EXACT order: {sections_str}"
+        prompt += "\nDo NOT include sections that are not in this list."
+        data = structured_llm.invoke(prompt)
+        return data, prompt_vars["skills"], prompt_vars["experience"]
+
+    # Ollama: ask for JSON with dynamic schema, parse the response
+    json_schema = build_json_schema(sections)
+    prompt_vars["section_list"] = sections_str
+    prompt_vars["json_schema"] = json_schema
+    response = _get_llm().invoke(RESUME_STRUCTURED_PROMPT.format(**prompt_vars)).content
+    data = _parse_resume_json(response)
+    return data, prompt_vars["skills"], prompt_vars["experience"]
 
 
 def generate_resume(job_description: str, results: list = None, candidate_yaml: str = "") -> tuple[str, str, str]:
@@ -96,7 +177,7 @@ def generate_resume(job_description: str, results: list = None, candidate_yaml: 
         from src.vector_store import search_resumes
         results = search_resumes(job_description)
 
-    skills, experience, education, certifications = _collect_structured_data(results)
+    skills, experience, education, certifications, projects = _collect_structured_data(results)
     context = "\n\n---\n\n".join(r["content"] for r in results)
 
     # Candidate YAML overrides for contact, education, certifications

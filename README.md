@@ -69,6 +69,7 @@ Switch between providers in the Web UI sidebar:
 | **Ollama** (default) | mistral:7b | Free | Included in setup |
 | **Gemini** | gemini-2.5-flash | Free tier | [Get API key](https://aistudio.google.com/apikey) |
 | **ChatGPT** | gpt-4o-mini | Pay per use | [Get API key](https://platform.openai.com/api-keys) |
+| **Claude** | claude-sonnet-4-20250514 | Pay per use | [Get API key](https://console.anthropic.com/settings/keys) |
 
 ## Project Structure
 
@@ -104,7 +105,7 @@ Edit `src/config.py` to change:
 
 ## Tech Stack
 
-- **LLM**: Ollama (mistral:7b) / Gemini / ChatGPT — switchable
+- **LLM**: Ollama (mistral:7b) / Gemini / ChatGPT / Claude — switchable
 - **Embeddings**: Ollama (nomic-embed-text) — free, local
 - **Vector Store**: OpenSearch 3.5 (Docker) — hybrid search with nested kNN + BM25
 - **Framework**: LangChain

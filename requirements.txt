@@ -3,6 +3,7 @@ langchain-community>=0.3.25
 langchain-ollama>=0.3.2
 langchain-google-genai>=2.1.0
 langchain-openai>=0.3.0
+langchain-anthropic>=0.3.0
 opensearch-py==2.4.2
 pypdf==4.0.1
 python-docx==1.1.0

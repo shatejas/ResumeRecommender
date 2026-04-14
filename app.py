@@ -12,6 +12,20 @@ from bs4 import BeautifulSoup
 from src.config import RESUME_FOLDER
 from src.candidate import CANDIDATE_FILE
 
+API_KEYS_FILE = Path(__file__).parent / "api_keys.yml"
+
+
+def _load_api_keys() -> dict:
+    """Load API keys from api_keys.yml if it exists."""
+    if API_KEYS_FILE.exists():
+        import yaml
+        try:
+            data = yaml.safe_load(API_KEYS_FILE.read_text()) or {}
+            return {k: (v or "") for k, v in data.items()}
+        except Exception:
+            pass
+    return {}
+
 MAX_ITERATIONS = 2
 MIN_ATS_SCORE = 90
 
@@ -128,10 +142,10 @@ def ingest_resumes(files):
 
         chunks = chunk_documents(docs)
         full_text = "\n".join(d.page_content for d in docs)
-        skills, experience, education, certifications = extract_all_sections(full_text)
+        skills, experience, education, certifications, projects = extract_all_sections(full_text)
         index_resume(source=name, skills=skills, experience=experience,
                      education=education, certifications=certifications,
-                     chunks=chunks, original_path=original)
+                     projects=projects, chunks=chunks, original_path=original)
         ingested += 1
         log.append(f"✅ Indexed {name} ({len(chunks)} chunks)")
 
@@ -155,7 +169,7 @@ def _save_candidate_yaml(yaml_text: str) -> str:
     return "✅ Saved candidate.yml"
 
 
-def generate(job_description, candidate_yaml, min_score, max_iter, llm_choice, gemini_api_key, openai_api_key):
+def generate(job_description, candidate_yaml, min_score, max_iter, llm_choice, gemini_api_key, openai_api_key, claude_api_key):
     """Run the full pipeline: search, generate, score, refine, export."""
     if not job_description.strip():
         return "No job description provided.", ""
@@ -175,6 +189,10 @@ def generate(job_description, candidate_yaml, min_score, max_iter, llm_choice, g
         if not openai_api_key:
             return "❌ Please enter your OpenAI API key.", ""
         set_llm_provider("openai", openai_api_key)
+    elif llm_choice == "Claude (API)":
+        if not claude_api_key:
+            return "❌ Please enter your Anthropic API key.", ""
+        set_llm_provider("claude", claude_api_key)
     else:
         set_llm_provider("ollama")
 
@@ -192,10 +210,33 @@ def generate(job_description, candidate_yaml, min_score, max_iter, llm_choice, g
         return f"❌ Error: {error_msg}", ""
 
 
+def _structured_to_text(data) -> str:
+    """Convert ResumeData to plain text for ATS scoring."""
+    lines = [data.name, data.contact, "", "SUMMARY", data.summary, "", "SKILLS"]
+    for cat, items in data.skills.items():
+        lines.append(f"{cat}: {items}")
+    lines.append("\nEXPERIENCE")
+    for role in data.experience:
+        lines.append(f"{role.company} | {role.title} | {role.dates}")
+        for b in role.bullets:
+            lines.append(f"- {b}")
+        lines.append("")
+    lines.append("EDUCATION")
+    for edu in data.education:
+        gpa = f", GPA: {edu.gpa}" if edu.gpa else ""
+        lines.append(f"{edu.degree} | {edu.university}{gpa}, {edu.date}")
+    if data.certifications:
+        lines.append("\nCERTIFICATIONS")
+        for cert in data.certifications:
+            lines.append(cert)
+    return "\n".join(lines)
+
+
 def _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log):
-    from src.rag_chain import generate_resume, score_resume, refine_resume, extract_job_info
+    from src.rag_chain import generate_resume, generate_resume_structured, score_resume, refine_resume, extract_job_info
     from src.vector_store import search_resumes
     from src.docx_writer import save_resume_docx
+    from src.structured_writer import save_structured_docx
     from src.config import RESUME_FOLDER
 
     pipeline_start = time.time()
@@ -233,9 +274,28 @@ def _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log):
     # Step 3: Generate using search results directly (no second search)
     t0 = time.time()
     log.append("\n⚙️ Generating resume...")
-    resume, skills, experience = generate_resume(job_description, results=results, candidate_yaml=candidate_yaml)
+
+    # Try structured generation first (tool-calling for API, JSON for Ollama)
+    structured_data, skills, experience = generate_resume_structured(
+        job_description, results=results, candidate_yaml=candidate_yaml
+    )
+
+    if structured_data:
+        log.append("  ✅ Structured output generated")
+        # Convert structured data to text for scoring/refinement
+        resume = _structured_to_text(structured_data)
+        use_structured = True
+    else:
+        log.append("  ⚠️ Structured output failed, falling back to text generation")
+        resume, skills, experience = generate_resume(
+            job_description, results=results, candidate_yaml=candidate_yaml
+        )
+        structured_data = None
+        use_structured = False
+
     print(f"  ⏱ Generate: {time.time() - t0:.1f}s")
     best_resume, best_score, best_feedback = resume, 0, ""
+    best_structured = structured_data
 
     # Step 4: Score and refine
     for iteration in range(int(max_iter)):
@@ -248,6 +308,7 @@ def _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log):
         if score > best_score:
             best_score = score
             best_resume = resume
+            best_structured = None  # Refined text loses structured format
             best_feedback = feedback
 
         if score >= min_score:
@@ -274,7 +335,14 @@ def _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log):
 
     output_path = Path(RESUME_FOLDER) / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_resume_docx(best_resume, str(output_path))
+
+    if best_structured:
+        from src.candidate import get_sections, load_candidate
+        candidate = load_candidate(candidate_yaml)
+        sections = get_sections(candidate)
+        save_structured_docx(best_structured, str(output_path), sections=sections)
+    else:
+        save_resume_docx(best_resume, str(output_path))
 
     log.append(f"💾 Saved to: {output_path}")
 
@@ -296,27 +364,41 @@ with gr.Blocks(title="ATS Resume Generator", theme=gr.themes.Soft()) as app:
         # --- Column 1: Settings ---
         with gr.Column(scale=1, min_width=220):
             gr.Markdown("### ⚙️ Settings")
+            _keys = _load_api_keys()
             llm_provider = gr.Radio(
-                choices=["Ollama (Local)", "Gemini (API)", "ChatGPT (API)"],
+                choices=["Ollama (Local)", "Gemini (API)", "ChatGPT (API)", "Claude (API)"],
                 value="Ollama (Local)",
                 label="LLM Provider",
             )
             gemini_key = gr.Textbox(
                 label="Gemini API Key",
                 type="password",
-                placeholder="Paste your API key...",
+                value=_keys.get("gemini", ""),
+                placeholder="Paste your API key or set in api_keys.yml",
                 visible=False,
             )
             openai_key = gr.Textbox(
                 label="OpenAI API Key",
                 type="password",
-                placeholder="Paste your API key...",
+                value=_keys.get("openai", ""),
+                placeholder="Paste your API key or set in api_keys.yml",
+                visible=False,
+            )
+            claude_key = gr.Textbox(
+                label="Anthropic API Key",
+                type="password",
+                value=_keys.get("anthropic", ""),
+                placeholder="Paste your API key or set in api_keys.yml",
                 visible=False,
             )
             llm_provider.change(
-                fn=lambda p: (gr.update(visible=p == "Gemini (API)"), gr.update(visible=p == "ChatGPT (API)")),
+                fn=lambda p: (
+                    gr.update(visible=p == "Gemini (API)"),
+                    gr.update(visible=p == "ChatGPT (API)"),
+                    gr.update(visible=p == "Claude (API)"),
+                ),
                 inputs=llm_provider,
-                outputs=[gemini_key, openai_key],
+                outputs=[gemini_key, openai_key, claude_key],
             )
             min_score = gr.Slider(50, 100, value=MIN_ATS_SCORE, step=5, label="Minimum ATS Score")
             max_iter = gr.Slider(1, 5, value=MAX_ITERATIONS, step=1, label="Max Refinement Iterations")
@@ -380,7 +462,7 @@ with gr.Blocks(title="ATS Resume Generator", theme=gr.themes.Soft()) as app:
 
     generate_btn.click(
         fn=generate,
-        inputs=[jd_input, candidate_editor, min_score, max_iter, llm_provider, gemini_key, openai_key],
+        inputs=[jd_input, candidate_editor, min_score, max_iter, llm_provider, gemini_key, openai_key, claude_key],
         outputs=[gen_log, ats_feedback],
     )
 

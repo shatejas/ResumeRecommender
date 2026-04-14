@@ -51,3 +51,12 @@ def format_certifications(data: dict) -> str:
     if not entries:
         return ""
     return "\n".join(f"{c.get('name', '')} ({c.get('year', '')})" for c in entries)
+
+
+def get_sections(data: dict) -> list[str]:
+    """Get the resume section order from candidate config."""
+    from src.resume_model import DEFAULT_SECTIONS
+    sections = data.get("sections", None)
+    if sections and isinstance(sections, list):
+        return [s.lower().strip() for s in sections]
+    return DEFAULT_SECTIONS

@@ -7,7 +7,7 @@ CRITICAL RULES:
 - You MAY rephrase existing bullet points to include job description keywords, but do NOT change company names, job titles, or dates
 - You MAY reorder skills to prioritize those matching the job description
 - SUMMARY must be ONLY 3-5 sentences. Do NOT put skills, education, or experience in SUMMARY.
-- SKILLS must be ONLY a grouped list of technical skills from the candidate data. No sentences.
+- SKILLS must be ONLY a grouped list of technical skills from the candidate data. No sentences. Limit to 5-7 skill categories, prioritizing those most relevant to the job description.
 - EXPERIENCE must have role lines as: Company | Title | Mon YYYY – Mon YYYY
 - EXPERIENCE must list the MOST RECENT job FIRST and OLDEST job LAST. Example: if someone worked at Company A (2024-Present) and Company B (2020-2023), Company A MUST come before Company B.
 - Every role MUST have 3-5 bullet points starting with "-" describing achievements with quantifiable metrics. Each bullet should be 1-2 lines long.

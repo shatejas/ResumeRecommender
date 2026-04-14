@@ -11,50 +11,62 @@ RESUME_FOLDER_FILE = Path(__file__).parent / ".resume_folder"
 
 SECTION_RE = re.compile(
     r"^\s*(SUMMARY|SKILLS|TECHNICAL\s+SKILLS|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|"
-    r"EDUCATION|CERTIFICATIONS|PROJECTS|ACHIEVEMENTS)\s*:?\s*$",
+    r"WORK\s+EXPERIENCE|EDUCATION|CERTIFICATIONS|PROJECTS|ACADEMIC\s+PROJECTS|"
+    r"KEY\s+PROJECTS|ACHIEVEMENTS|PUBLICATIONS|AWARDS|VOLUNTEER)\s*:?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
-SKILLS_HEADERS = {"skills", "technical skills"}
-EXPERIENCE_HEADERS = {"experience", "professional experience"}
-EDUCATION_HEADERS = {"education", "education and certifications"}
-CERTIFICATION_HEADERS = {"certifications"}
+# Map header variations to canonical names
+_HEADER_MAP = {
+    "skills": "skills", "technical skills": "skills",
+    "experience": "experience", "professional experience": "experience", "work experience": "experience",
+    "education": "education",
+    "certifications": "certifications",
+    "projects": "projects", "academic projects": "projects", "key projects": "projects",
+    "summary": "summary",
+    "achievements": "achievements",
+    "publications": "publications",
+    "awards": "awards",
+    "volunteer": "volunteer",
+}
 
 
 def _parse_sections(resume_text: str) -> dict[str, str]:
-    """Parse resume text into named sections."""
+    """Parse resume text into canonical named sections."""
     lines = [line.strip() for line in resume_text.splitlines()]
     normalized = "\n".join(lines)
     sections = {}
     matches = list(SECTION_RE.finditer(normalized))
     for i, match in enumerate(matches):
-        header = re.sub(r"\s+", " ", match.group(1)).strip().lower()
+        raw_header = re.sub(r"\s+", " ", match.group(1)).strip().lower()
+        canonical = _HEADER_MAP.get(raw_header, raw_header)
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(normalized)
         content = normalized[start:end].strip()
         if content:
-            sections[header] = content
+            # Append if same canonical section appears multiple times
+            if canonical in sections:
+                sections[canonical] += "\n" + content
+            else:
+                sections[canonical] = content
     return sections
-
-
-def _join_sections(sections: dict, headers: set) -> str:
-    return "\n".join(sections.get(h, "") for h in headers if h in sections).strip()
 
 
 def extract_skills_experience(resume_text: str) -> tuple[str, str]:
     """Extract skills and experience sections."""
     sections = _parse_sections(resume_text)
-    return _join_sections(sections, SKILLS_HEADERS), _join_sections(sections, EXPERIENCE_HEADERS)
+    return sections.get("skills", ""), sections.get("experience", "")
 
 
-def extract_all_sections(resume_text: str) -> tuple[str, str, str, str]:
-    """Extract skills, experience, education, and certifications."""
+def extract_all_sections(resume_text: str) -> tuple[str, str, str, str, str]:
+    """Extract skills, experience, education, certifications, and projects."""
     sections = _parse_sections(resume_text)
     return (
-        _join_sections(sections, SKILLS_HEADERS),
-        _join_sections(sections, EXPERIENCE_HEADERS),
-        _join_sections(sections, EDUCATION_HEADERS),
-        _join_sections(sections, CERTIFICATION_HEADERS),
+        sections.get("skills", ""),
+        sections.get("experience", ""),
+        sections.get("education", ""),
+        sections.get("certifications", ""),
+        sections.get("projects", ""),
     )
 
 
@@ -78,10 +90,12 @@ def main(resume_folder: str):
                 continue
             chunks = chunk_documents(docs)
             full_text = "\n".join(d.page_content for d in docs)
-            skills, experience = extract_skills_experience(full_text)
+            skills, experience, education, certifications, projects = extract_all_sections(full_text)
 
-            index_resume(source=str(f), skills=skills, experience=experience, chunks=chunks)
-            print(f"  Indexed {f.name} ({len(chunks)} chunks, skills={len(skills) > 0}, exp={len(experience) > 0})")
+            index_resume(source=str(f), skills=skills, experience=experience,
+                         education=education, certifications=certifications,
+                         projects=projects, chunks=chunks)
+            print(f"  Indexed {f.name} ({len(chunks)} chunks)")
 
     print("\nDone! All resumes indexed in OpenSearch.")
 

@@ -7,3 +7,4 @@ __pycache__/
 *.iml
 .idea/
 .vscode/
+api_keys.yml

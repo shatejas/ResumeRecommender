@@ -1,0 +1,9 @@
+# API keys for LLM providers.
+# Fill in the keys you want to use. Leave blank for providers you don't need.
+# These are loaded automatically — no need to paste in the UI.
+
+# Remove template from the name of this file
+
+gemini: ""
+openai: ""
+anthropic: ""

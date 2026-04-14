@@ -20,6 +20,7 @@ INDEX_MAPPING = {
             "experience": {"type": "text"},
             "education": {"type": "text"},
             "certifications": {"type": "text"},
+            "projects": {"type": "text"},
             "chunks": {
                 "type": "nested",
                 "properties": {
@@ -98,7 +99,8 @@ def resume_exists(source: str) -> bool:
 
 
 def index_resume(source: str, skills: str, experience: str, chunks: list[Document],
-                 education: str = "", certifications: str = "", original_path: str = ""):
+                 education: str = "", certifications: str = "", projects: str = "",
+                 original_path: str = ""):
     """Index a single resume with structured data and nested chunks."""
     client = get_client()
     embeddings = get_embeddings()
@@ -114,6 +116,7 @@ def index_resume(source: str, skills: str, experience: str, chunks: list[Documen
             "experience": experience,
             "education": education,
             "certifications": certifications,
+            "projects": projects,
             "chunks": [{"text": t, "embedding": v} for t, v in zip(texts, vectors)],
         },
     )
@@ -195,6 +198,7 @@ def search_resumes(query: str, k: int = 5) -> list[dict]:
             "experience": hit["_source"].get("experience", ""),
             "education": hit["_source"].get("education", ""),
             "certifications": hit["_source"].get("certifications", ""),
+            "projects": hit["_source"].get("projects", ""),
             "content": "\n\n".join(c["text"] for c in hit["_source"]["chunks"]),
         }
         for hit in resp["hits"]["hits"]

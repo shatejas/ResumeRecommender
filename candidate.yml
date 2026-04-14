@@ -2,11 +2,21 @@
 # These fields are always included in generated resumes exactly as written.
 # Delete or leave blank any field you don't want included.
 
+# Resume section order — reorder, add, or remove sections as needed.
+# Supported: summary, skills, experience, projects, education, certifications
+# You can also add custom section names (e.g. publications, awards, volunteer)
+sections:
+  - summary
+  - skills
+  - experience
+  - projects
+  - education and certifications
+
 contact:
   name: Shweta Gupta
   email: shwetagupta271@gmail.com 
   phone: (949) 738-0672 
-  location: Seattle, WA
+  location: Los Angeles, CA
   linkedin: linkedin.com/in/shwetagupta1995 
   github: github.com/shweta7595
   # website: janedoe.com
