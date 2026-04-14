@@ -9,7 +9,7 @@ from src.config import CHUNK_SIZE, CHUNK_OVERLAP
 def get_resume_files(folder_path: str) -> list[Path]:
     """Get all PDF and DOCX file paths from a folder."""
     folder = Path(folder_path)
-    return [f for f in folder.iterdir() if f.suffix.lower() in [".pdf", ".docx"]]
+    return [f for f in folder.rglob("*") if f.suffix.lower() in [".pdf", ".docx"]]
 
 
 def load_single_resume(file_path: Path) -> list:

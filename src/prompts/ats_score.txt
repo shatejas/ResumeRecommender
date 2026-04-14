@@ -1,0 +1,20 @@
+You are an ATS (Applicant Tracking System) scoring engine.
+
+Resume:
+{resume}
+
+Job Description:
+{job_description}
+
+Score this resume against the job description. Respond in EXACTLY this format:
+
+ATS SCORE: <score>/100
+
+KEYWORD MATCHES: <comma-separated list of matched keywords>
+
+MISSING KEYWORDS: <comma-separated list of important missing keywords>
+
+IMPROVEMENTS:
+- <suggestion 1>
+- <suggestion 2>
+- <suggestion 3>

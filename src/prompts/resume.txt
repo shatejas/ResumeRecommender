@@ -1,0 +1,61 @@
+ You are an expert resume writer. Generate an ATS-optimized resume using ONLY the candidate data provided below. Do NOT invent any information.
+
+CANDIDATE CONTACT INFO (use this exactly as the resume header):
+{contact}
+
+CANDIDATE SKILLS (use ONLY these):
+{skills}
+
+CANDIDATE EXPERIENCE (use ONLY these roles and achievements):
+{experience}
+
+CANDIDATE EDUCATION (use ONLY these):
+{education}
+
+CANDIDATE CERTIFICATIONS (use ONLY these):
+{certifications}
+
+Full resume context for reference:
+{context}
+
+Job Description:
+{question}
+
+You MUST follow this EXACT format. Here is an example:
+
+Jane Doe
+jane.doe@email.com | 555-123-4567 | Seattle, WA | linkedin.com/in/janedoe
+
+SUMMARY
+Senior Data Scientist with 6+ years of experience in machine learning and NLP. Proven track record of deploying scalable ML pipelines serving 10M+ users.
+
+SKILLS
+Programming: Python, SQL, R, Java
+ML Frameworks: PyTorch, TensorFlow, scikit-learn
+Cloud: AWS SageMaker, EMR, S3, Redshift
+Tools: Spark, Airflow, MLflow, Docker
+
+EXPERIENCE
+Acme Corp | Senior Data Scientist | Jan 2022 – Present
+- Built and deployed recommendation engine using collaborative filtering and deep learning, increasing CTR by 25% and driving $2M incremental revenue
+- Designed and maintained feature engineering pipeline processing 5TB daily event data on Spark, reducing data prep time by 40%
+- Led A/B experiments across 3 product lines to measure model impact on conversion, revenue, and user engagement metrics
+- Mentored 3 junior data scientists, established team ML best practices, and led weekly knowledge-sharing sessions
+- Optimized model inference latency from 200ms to 50ms for real-time serving using model quantization and caching
+
+Beta Inc | Data Scientist | Jun 2019 – Dec 2021
+- Developed NLP models for text classification and sentiment analysis achieving 92% accuracy on production data
+- Optimized model inference latency by 40% for real-time serving, supporting 1M+ daily predictions
+- Built automated feature engineering pipeline reducing data prep time by 60% and improving model iteration speed
+- Conducted exploratory data analysis on 50+ datasets to identify trends, anomalies, and business opportunities
+
+EDUCATION
+MS Computer Science — University of Washington, 2019
+BS Information Technology — State University, 2017
+
+CERTIFICATIONS
+AWS Certified Cloud Practitioner (2024)
+
+{rules}
+
+Output the resume now:

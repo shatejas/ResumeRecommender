@@ -1,0 +1,16 @@
+CRITICAL RULES:
+- ONLY use skills, experience, education, and certifications from the CANDIDATE DATA above
+- Do NOT invent degrees, certifications, companies, job titles, or metrics not in the candidate data
+- Do NOT copy ANY text from the Job Description into the resume — no company descriptions, mission statements, benefits, perks, EEO statements, or job posting boilerplate
+- The Job Description is ONLY used to decide which candidate skills/experience to emphasize. It is the TARGET role, not the candidate's history.
+- EXPERIENCE section must ONLY contain companies and roles listed in CANDIDATE EXPERIENCE above
+- You MAY rephrase existing bullet points to include job description keywords, but do NOT change company names, job titles, or dates
+- You MAY reorder skills to prioritize those matching the job description
+- SUMMARY must be ONLY 3-5 sentences. Do NOT put skills, education, or experience in SUMMARY.
+- SKILLS must be ONLY a grouped list of technical skills from the candidate data. No sentences.
+- EXPERIENCE must have role lines as: Company | Title | Mon YYYY – Mon YYYY
+- EXPERIENCE must list the MOST RECENT job FIRST and OLDEST job LAST. Example: if someone worked at Company A (2024-Present) and Company B (2020-2023), Company A MUST come before Company B.
+- Every role MUST have 3-5 bullet points starting with "-" describing achievements with quantifiable metrics. Each bullet should be 1-2 lines long.
+- Each section must appear exactly ONCE
+- The resume MUST include ALL of these sections: SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS. Do NOT skip any section.
+- Do NOT add explanations or commentary before or after the resume

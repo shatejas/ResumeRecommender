@@ -255,8 +255,57 @@ def save_resume_docx(resume_text: str, output_path: str):
     doc.save(output_path)
 
 
-def resume_to_html(resume_text: str) -> str:
-    """Convert resume text to styled HTML for preview."""
+# Matches impact numbers: percentages, dollar amounts, multipliers, plain numbers with +/units
+IMPACT_RE = re.compile(
+    r"\$[\d,.]+[MBKmk]?"
+    r"|\d+[.,]?\d*\s*%"
+    r"|\d+[.,]?\d*[xX]"
+    r"|\d+[+](?:\s|$)"
+    r"|\d{1,3}(?:,\d{3})+(?:\+)?"
+    r"|\d+(?:\.\d+)?\s*(?:million|billion|[MBKmk]\b|TB|GB|ms\b)",
+)
+
+
+def _extract_jd_keywords(job_description: str) -> set[str]:
+    """Extract meaningful multi-word and single-word keywords from a job description."""
+    text = job_description.lower()
+    # Common filler words to ignore
+    stop = {"and", "the", "with", "for", "you", "our", "are", "will", "that", "this",
+            "from", "have", "has", "been", "can", "not", "but", "all", "they", "their",
+            "what", "when", "how", "who", "which", "about", "into", "your", "also",
+            "more", "other", "than", "then", "such", "each", "etc", "able", "must",
+            "should", "would", "could", "may", "including", "across", "within",
+            "strong", "experience", "work", "working", "role", "team", "ability",
+            "years", "year", "using", "used", "knowledge", "understanding",
+            "excellent", "preferred", "required", "minimum", "plus", "equivalent"}
+    words = re.findall(r"[a-z][a-z#+./-]{1,}", text)
+    return {w for w in words if w not in stop and len(w) > 2}
+
+
+def _highlight_keywords(text: str, keywords: set[str]) -> str:
+    """Wrap JD keyword matches in highlight spans."""
+    if not keywords:
+        return text
+    def replacer(m):
+        return f'<span style="background:#d4edda; padding:0 2px; border-radius:2px;">{m.group(0)}</span>'
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(k) for k in sorted(keywords, key=len, reverse=True)) + r")\b",
+        re.IGNORECASE,
+    )
+    return pattern.sub(replacer, text)
+
+
+def _highlight_impacts(text: str) -> str:
+    """Wrap impact numbers in bold blue spans."""
+    return IMPACT_RE.sub(
+        lambda m: f'<span style="color:#1a73e8; font-weight:bold;">{m.group(0)}</span>',
+        text,
+    )
+
+
+def resume_to_html(resume_text: str, job_description: str = "") -> str:
+    """Convert resume text to styled HTML for preview with optional JD-based highlighting."""
+    jd_keywords = _extract_jd_keywords(job_description) if job_description else set()
     lines = resume_text.strip().splitlines()
     html = ['<div style="font-family: Times New Roman, serif; font-size: 10pt; '
             'line-height: 1.4; max-width: 700px; margin: 0 auto; padding: 20px; '
@@ -306,9 +355,10 @@ def resume_to_html(resume_text: str) -> str:
             if skill_match:
                 cat = skill_match.group(1).strip().replace("&", "&amp;").replace("<", "&lt;")
                 items = skill_match.group(2).strip().replace("&", "&amp;").replace("<", "&lt;")
+                items = _highlight_keywords(items, jd_keywords)
                 html.append(f'<p style="margin:1px 0 1px 15px;">• <b>{cat}:</b> {items}</p>')
             else:
-                html.append(f'<p style="margin:1px 0 1px 15px;">• {esc}</p>')
+                html.append(f'<p style="margin:1px 0 1px 15px;">• {_highlight_keywords(esc, jd_keywords)}</p>')
             content_index += 1
             continue
 
@@ -331,10 +381,13 @@ def resume_to_html(resume_text: str) -> str:
                 if skill_match:
                     cat = skill_match.group(1).strip().replace("&", "&amp;")
                     items = skill_match.group(2).strip().replace("&", "&amp;")
+                    items = _highlight_keywords(items, jd_keywords)
                     html.append(f'<p style="margin:1px 0 1px 15px;">• <b>{cat}:</b> {items}</p>')
                 else:
-                    html.append(f'<p style="margin:1px 0 1px 15px;">• {bullet}</p>')
+                    html.append(f'<p style="margin:1px 0 1px 15px;">• {_highlight_keywords(bullet, jd_keywords)}</p>')
             else:
+                bullet = _highlight_keywords(bullet, jd_keywords)
+                bullet = _highlight_impacts(bullet)
                 html.append(f'<p style="margin:1px 0 1px 20px;">• {bullet}</p>')
             content_index += 1
             continue

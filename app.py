@@ -1,14 +1,78 @@
 """Gradio UI for ATS Resume Generator."""
 
+import json
 import re
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 import gradio as gr
+import requests
+from bs4 import BeautifulSoup
 from src.config import RESUME_FOLDER
+from src.candidate import CANDIDATE_FILE
 
 MAX_ITERATIONS = 2
 MIN_ATS_SCORE = 90
+
+
+from typing import Optional
+
+
+def _extract_jsonld_job(soup: BeautifulSoup) -> Optional[str]:
+    """Extract job description from JSON-LD structured data if present."""
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string)
+            if data.get("@type") == "JobPosting" and data.get("description"):
+                desc = data["description"]
+                # Handle double-encoded HTML (e.g. &lt;p&gt; -> <p> -> text)
+                decoded = BeautifulSoup(desc, "html.parser").get_text()
+                desc_text = BeautifulSoup(decoded, "html.parser").get_text(separator="\n", strip=True)
+                parts = []
+                if data.get("title"):
+                    parts.append(data["title"])
+                org = data.get("hiringOrganization")
+                if isinstance(org, dict) and org.get("name"):
+                    parts.append(f"Company: {org['name']}")
+                loc = data.get("jobLocation")
+                if isinstance(loc, dict):
+                    addr = loc.get("address", {})
+                    city = addr.get("addressLocality", "")
+                    state = addr.get("addressRegion", "")
+                    if city or state:
+                        parts.append(f"Location: {', '.join(filter(None, [city, state]))}")
+                if parts:
+                    parts.append("")
+                parts.append(desc_text)
+                return "\n".join(parts)
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return None
+
+
+def fetch_jd_from_url(url: str) -> str:
+    """Scrape job description text from a URL. Tries JSON-LD first, then plain HTML."""
+    if not url or not url.strip():
+        return ""
+    try:
+        resp = requests.get(url.strip(), headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Try JSON-LD structured data first (works for most job sites)
+        jd = _extract_jsonld_job(soup)
+        if jd:
+            return jd
+
+        # Fallback: plain HTML text extraction
+        for tag in soup(["script", "style", "nav", "header", "footer", "iframe"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text
+    except Exception as e:
+        return f"❌ Failed to fetch: {e}"
 
 
 def ingest_resumes(files):
@@ -19,7 +83,7 @@ def ingest_resumes(files):
     from src.vector_store import index_resume, ensure_index_exists, resume_exists
     from src.document_loader import load_single_resume, chunk_documents
     from src.vector_store import ensure_search_pipeline
-    from ingest import extract_skills_experience
+    from ingest import extract_all_sections
 
     ensure_search_pipeline()
     ensure_index_exists()
@@ -64,8 +128,10 @@ def ingest_resumes(files):
 
         chunks = chunk_documents(docs)
         full_text = "\n".join(d.page_content for d in docs)
-        skills, experience = extract_skills_experience(full_text)
-        index_resume(source=name, skills=skills, experience=experience, chunks=chunks, original_path=original)
+        skills, experience, education, certifications = extract_all_sections(full_text)
+        index_resume(source=name, skills=skills, experience=experience,
+                     education=education, certifications=certifications,
+                     chunks=chunks, original_path=original)
         ingested += 1
         log.append(f"✅ Indexed {name} ({len(chunks)} chunks)")
 
@@ -73,10 +139,29 @@ def ingest_resumes(files):
     return "\n".join(log)
 
 
-def generate(job_description, min_score, max_iter, llm_choice, gemini_api_key, openai_api_key):
+def _load_candidate_yaml() -> str:
+    if CANDIDATE_FILE.exists():
+        return CANDIDATE_FILE.read_text()
+    return ""
+
+
+def _save_candidate_yaml(yaml_text: str) -> str:
+    import yaml
+    try:
+        yaml.safe_load(yaml_text)
+    except yaml.YAMLError as e:
+        return f"❌ Invalid YAML — not saved.\n{e}"
+    CANDIDATE_FILE.write_text(yaml_text)
+    return "✅ Saved candidate.yml"
+
+
+def generate(job_description, candidate_yaml, min_score, max_iter, llm_choice, gemini_api_key, openai_api_key):
     """Run the full pipeline: search, generate, score, refine, export."""
     if not job_description.strip():
-        return "No job description provided.", None, "", ""
+        return "No job description provided.", ""
+
+    # Always read candidate profile from saved file, not the textbox
+    candidate_yaml = _load_candidate_yaml()
 
     from src.rag_chain import set_llm_provider
     from src.vector_store import ensure_search_pipeline
@@ -84,11 +169,11 @@ def generate(job_description, min_score, max_iter, llm_choice, gemini_api_key, o
     # Set LLM provider
     if llm_choice == "Gemini (API)":
         if not gemini_api_key:
-            return "❌ Please enter your Gemini API key.", None, "", ""
+            return "❌ Please enter your Gemini API key.", ""
         set_llm_provider("gemini", gemini_api_key)
     elif llm_choice == "ChatGPT (API)":
         if not openai_api_key:
-            return "❌ Please enter your OpenAI API key.", None, "", ""
+            return "❌ Please enter your OpenAI API key.", ""
         set_llm_provider("openai", openai_api_key)
     else:
         set_llm_provider("ollama")
@@ -97,34 +182,40 @@ def generate(job_description, min_score, max_iter, llm_choice, gemini_api_key, o
     log = []
 
     try:
-        return _run_pipeline(job_description, min_score, max_iter, log)
+        return _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log)
     except Exception as e:
         error_msg = str(e)
         if "API_KEY_INVALID" in error_msg or "API key" in error_msg:
-            return "❌ Invalid API key. Please check and try again.", None, "", ""
+            return "❌ Invalid API key. Please check and try again.", ""
         if "quota" in error_msg.lower() or "rate" in error_msg.lower():
-            return "❌ API rate limit reached. Please wait and try again.", None, "", ""
-        return f"❌ Error: {error_msg}", None, "", ""
+            return "❌ API rate limit reached. Please wait and try again.", ""
+        return f"❌ Error: {error_msg}", ""
 
 
-def _run_pipeline(job_description, min_score, max_iter, log):
+def _run_pipeline(job_description, candidate_yaml, min_score, max_iter, log):
     from src.rag_chain import generate_resume, score_resume, refine_resume, extract_job_info
     from src.vector_store import search_resumes
-    from src.docx_writer import save_resume_docx, resume_to_html
+    from src.docx_writer import save_resume_docx
     from src.config import RESUME_FOLDER
 
+    pipeline_start = time.time()
+
     # Step 1: Search once, reuse results
+    t0 = time.time()
     log.append("🔍 Searching existing resumes...")
-    results = search_resumes(job_description, k=3)
+    results = search_resumes(job_description, k=5)
     for r in results:
         log.append(f"  • {Path(r['source']).name}")
+    print(f"  ⏱ Search: {time.time() - t0:.1f}s")
 
     # Step 2: Score best match
     if results:
         r = results[0]
+        t0 = time.time()
         log.append(f"\n📊 Scoring best match: {Path(r['source']).name}")
         score, feedback, _ = score_resume(r["content"], job_description)
         log.append(f"  ATS Score: {score}/100")
+        print(f"  ⏱ Score existing: {time.time() - t0:.1f}s")
 
         if score >= min_score:
             source = r["source"]
@@ -137,25 +228,22 @@ def _run_pipeline(job_description, min_score, max_iter, log):
             log.append(f"\n✅ Existing resume scores {score}/100. No generation needed!")
             log.append(f"📄 Use: {display_path}")
 
-            import shutil, tempfile as tf
-            download_path = None
-            if full_path:
-                tmp = tf.NamedTemporaryFile(suffix=full_path.suffix, delete=False)
-                shutil.copy2(str(full_path), tmp.name)
-                download_path = tmp.name
-
-            return "\n".join(log), download_path, "", feedback
+            return "\n".join(log), feedback
 
     # Step 3: Generate using search results directly (no second search)
+    t0 = time.time()
     log.append("\n⚙️ Generating resume...")
-    resume, skills, experience = generate_resume(job_description, results=results)
+    resume, skills, experience = generate_resume(job_description, results=results, candidate_yaml=candidate_yaml)
+    print(f"  ⏱ Generate: {time.time() - t0:.1f}s")
     best_resume, best_score, best_feedback = resume, 0, ""
 
     # Step 4: Score and refine
     for iteration in range(int(max_iter)):
+        t0 = time.time()
         log.append(f"\n--- Iteration {iteration + 1} ---")
         score, feedback, parsed = score_resume(resume, job_description)
         log.append(f"ATS Score: {score}/100")
+        print(f"  ⏱ Score iter {iteration + 1}: {time.time() - t0:.1f}s")
 
         if score > best_score:
             best_score = score
@@ -168,11 +256,15 @@ def _run_pipeline(job_description, min_score, max_iter, log):
 
         log.append(f"Missing: {parsed['missing_keywords']}")
         log.append("Refining...")
+        t0 = time.time()
         resume = refine_resume(resume, job_description, parsed, skills, experience)
+        print(f"  ⏱ Refine iter {iteration + 1}: {time.time() - t0:.1f}s")
     else:
         log.append("\n⚠️ Max iterations reached.")
 
     log.append(f"\n📊 Best ATS Score: {best_score}/100")
+    total = time.time() - pipeline_start
+    print(f"\n⏱ Total pipeline: {total:.1f}s")
 
     # Step 4: Export
     company, title = extract_job_info(job_description)
@@ -180,16 +272,13 @@ def _run_pipeline(job_description, min_score, max_iter, log):
     safe_name = re.sub(r"[^\w-]", "_", f"{company}_{title}")[:60]
     filename = f"{safe_name}_{timestamp}.docx"
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
-    save_resume_docx(best_resume, tmp.name)
-
     output_path = Path(RESUME_FOLDER) / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
     save_resume_docx(best_resume, str(output_path))
 
     log.append(f"💾 Saved to: {output_path}")
 
-    return "\n".join(log), tmp.name, resume_to_html(best_resume), best_feedback
+    return "\n".join(log), best_feedback
 
 
 def clear_index():
@@ -232,8 +321,18 @@ with gr.Blocks(title="ATS Resume Generator", theme=gr.themes.Soft()) as app:
             min_score = gr.Slider(50, 100, value=MIN_ATS_SCORE, step=5, label="Minimum ATS Score")
             max_iter = gr.Slider(1, 5, value=MAX_ITERATIONS, step=1, label="Max Refinement Iterations")
             gr.Markdown("---")
+            gr.Markdown("### 👤 Candidate Profile")
+            candidate_editor = gr.Textbox(
+                label="candidate.yml",
+                value=_load_candidate_yaml,
+                lines=15,
+                placeholder="Edit your contact, education, and certifications here...",
+            )
+            save_candidate_btn = gr.Button("💾 Save")
+            gr.Markdown("---")
             clear_btn = gr.Button("🗑️ Clear Index", variant="stop")
             ingest_log_box = gr.Textbox(label="Log", lines=8, interactive=False)
+            save_candidate_btn.click(fn=_save_candidate_yaml, inputs=candidate_editor, outputs=ingest_log_box)
             clear_btn.click(fn=clear_index, outputs=ingest_log_box)
 
         # --- Column 2: Upload + JD ---
@@ -256,25 +355,33 @@ with gr.Blocks(title="ATS Resume Generator", theme=gr.themes.Soft()) as app:
             ingest_folder_btn.click(fn=ingest_resumes, inputs=upload_folder, outputs=ingest_log_box)
 
             gr.Markdown("---")
+            gr.Markdown("### 📝 Job Description")
+            with gr.Row():
+                jd_url = gr.Textbox(
+                    label="Job URL",
+                    placeholder="https://...",
+                    lines=1,
+                    scale=4,
+                )
+                fetch_btn = gr.Button("🔗 Fetch", scale=1)
             jd_input = gr.Textbox(
-                label="📝 Paste Job Description",
+                label="Job Description",
                 lines=12,
-                placeholder="Paste the full job description here...",
+                placeholder="Paste the full job description here or fetch from URL above...",
             )
+            fetch_btn.click(fn=fetch_jd_from_url, inputs=jd_url, outputs=jd_input)
             generate_btn = gr.Button("🚀 Generate Resume", variant="primary")
 
         # --- Column 3: Generated Resume ---
         with gr.Column(scale=3):
             gr.Markdown("### 📄 Generated Resume")
-            resume_output = gr.HTML(label="Resume Preview")
-            download_file = gr.File(label="📥 Download", height=50)
             ats_feedback = gr.Textbox(label="📝 ATS Recommendation (for manual refinement)", lines=10, interactive=False)
             gen_log = gr.Textbox(label="Pipeline Log", lines=8, interactive=False)
 
     generate_btn.click(
         fn=generate,
-        inputs=[jd_input, min_score, max_iter, llm_provider, gemini_key, openai_key],
-        outputs=[gen_log, download_file, resume_output, ats_feedback],
+        inputs=[jd_input, candidate_editor, min_score, max_iter, llm_provider, gemini_key, openai_key],
+        outputs=[gen_log, ats_feedback],
     )
 
 if __name__ == "__main__":

@@ -1,0 +1,28 @@
+# Candidate profile — used for contact info, education, and certifications.
+# These fields are always included in generated resumes exactly as written.
+# Delete or leave blank any field you don't want included.
+
+contact:
+  name: Shweta Gupta
+  email: shwetagupta271@gmail.com 
+  phone: (949) 738-0672 
+  location: Seattle, WA
+  linkedin: linkedin.com/in/shwetagupta1995 
+  github: github.com/shweta7595
+  # website: janedoe.com
+
+education:
+  - degree: M.S. Business Analytics
+    university: University of California Irvine
+    year: August 2025
+  - degree: Master of Computer Applications 
+    university: VIT University
+    year: May 2018
+  - degree: B.S. Information Technology
+    university: St. Xavier’s College
+    year: May 2016
+
+certifications:
+  - name: AWS Certified Cloud Practitioner (2025)
+  - name: Alteryx Designer Core (2025)
+  - name: Microsoft Power BI Data Analyst Associate PL 300

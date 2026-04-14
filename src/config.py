@@ -17,7 +17,7 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
 # Ingestion
-INGEST_BATCH_SIZE = 10
+INGEST_BATCH_SIZE = 25
 
 # Resume folder (saved during ingestion, read at generation time)
 _FOLDER_FILE = Path(__file__).parent.parent / ".resume_folder"

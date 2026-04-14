@@ -17,17 +17,16 @@ SECTION_RE = re.compile(
 
 SKILLS_HEADERS = {"skills", "technical skills"}
 EXPERIENCE_HEADERS = {"experience", "professional experience"}
+EDUCATION_HEADERS = {"education", "education and certifications"}
+CERTIFICATION_HEADERS = {"certifications"}
 
 
-def extract_skills_experience(resume_text: str) -> tuple[str, str]:
-    """Extract skills and experience sections using regex."""
-    # Normalize whitespace: collapse multiple spaces, strip trailing per line
+def _parse_sections(resume_text: str) -> dict[str, str]:
+    """Parse resume text into named sections."""
     lines = [line.strip() for line in resume_text.splitlines()]
     normalized = "\n".join(lines)
-
     sections = {}
     matches = list(SECTION_RE.finditer(normalized))
-
     for i, match in enumerate(matches):
         header = re.sub(r"\s+", " ", match.group(1)).strip().lower()
         start = match.end()
@@ -35,11 +34,28 @@ def extract_skills_experience(resume_text: str) -> tuple[str, str]:
         content = normalized[start:end].strip()
         if content:
             sections[header] = content
+    return sections
 
-    skills = "\n".join(sections.get(h, "") for h in SKILLS_HEADERS if h in sections)
-    experience = "\n".join(sections.get(h, "") for h in EXPERIENCE_HEADERS if h in sections)
 
-    return skills.strip(), experience.strip()
+def _join_sections(sections: dict, headers: set) -> str:
+    return "\n".join(sections.get(h, "") for h in headers if h in sections).strip()
+
+
+def extract_skills_experience(resume_text: str) -> tuple[str, str]:
+    """Extract skills and experience sections."""
+    sections = _parse_sections(resume_text)
+    return _join_sections(sections, SKILLS_HEADERS), _join_sections(sections, EXPERIENCE_HEADERS)
+
+
+def extract_all_sections(resume_text: str) -> tuple[str, str, str, str]:
+    """Extract skills, experience, education, and certifications."""
+    sections = _parse_sections(resume_text)
+    return (
+        _join_sections(sections, SKILLS_HEADERS),
+        _join_sections(sections, EXPERIENCE_HEADERS),
+        _join_sections(sections, EDUCATION_HEADERS),
+        _join_sections(sections, CERTIFICATION_HEADERS),
+    )
 
 
 def main(resume_folder: str):

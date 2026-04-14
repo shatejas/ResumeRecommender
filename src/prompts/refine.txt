@@ -1,0 +1,48 @@
+You are an expert resume writer. Improve this resume using ONLY the data provided below. Do NOT invent any information.
+
+Current resume:
+{resume}
+
+Job Description:
+{job_description}
+
+CANDIDATE SKILLS (use ONLY these):
+{skills}
+
+CANDIDATE EXPERIENCE (use ONLY these roles and achievements):
+{experience}
+
+MISSING KEYWORDS that MUST be added (only if they exist in candidate data):
+{missing_keywords}
+
+IMPROVEMENTS that MUST be applied:
+{improvements}
+
+Rewrite the resume with these fixes applied. Follow this EXACT format:
+
+[Full Name]
+[Contact info on one line]
+
+SUMMARY
+[2-3 sentences ONLY. No skills lists, no education, no experience details here.]
+
+SKILLS
+[Grouped technical skills — only from candidate data, prioritize missing keywords that match]
+
+EXPERIENCE
+[Company | Title | Mon YYYY – Mon YYYY]
+- [Achievement bullet 1 with quantifiable metrics]
+- [Achievement bullet 2 with quantifiable metrics]
+- [Achievement bullet 3 with quantifiable metrics]
+
+[Repeat for each role with 3-5 bullets each]
+
+EDUCATION
+[Degree — University, Year]
+
+CERTIFICATIONS
+[Certification (Year)]
+
+{rules}
+
+Output the improved resume now:
