@@ -13,6 +13,8 @@ from src.config import RESUME_FOLDER
 from src.candidate import CANDIDATE_FILE
 
 API_KEYS_FILE = Path(__file__).parent / "api_keys.yml"
+SCAN_HISTORY_FILE = Path(__file__).parent / "data" / "scan_history.tsv"
+JOB_STATUS_FILE = Path(__file__).parent / "data" / "job_status.json"
 
 
 def _load_api_keys() -> dict:
@@ -28,6 +30,283 @@ def _load_api_keys() -> dict:
 
 MAX_ITERATIONS = 2
 MIN_ATS_SCORE = 90
+
+
+# --- Job status tracking ---
+
+def _load_job_statuses() -> dict:
+    """Load job statuses from JSON. Returns {url: status}."""
+    if not JOB_STATUS_FILE.exists():
+        return {}
+    try:
+        return json.loads(JOB_STATUS_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _save_job_statuses(statuses: dict):
+    JOB_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    JOB_STATUS_FILE.write_text(json.dumps(statuses, indent=2))
+
+
+_job_statuses: dict = {}
+
+
+def _refresh_statuses():
+    global _job_statuses
+    _job_statuses = _load_job_statuses()
+
+
+def _set_job_status(urls_text: str, status: str) -> str:
+    """Set status for selected job URLs."""
+    if not urls_text.strip():
+        return "❌ No jobs selected."
+    urls = [u.strip() for u in urls_text.strip().splitlines() if u.strip()]
+    for url in urls:
+        _job_statuses[url] = status
+    _save_job_statuses(_job_statuses)
+    return f"✅ Marked {len(urls)} job(s) as {status}"
+
+
+# --- Scan history cache ---
+
+def _load_scan_history() -> list[dict]:
+    """Load all jobs from scan_history.tsv, deduplicated by URL."""
+    if not SCAN_HISTORY_FILE.exists():
+        return []
+    jobs = []
+    seen_urls = set()
+    for line in SCAN_HISTORY_FILE.read_text().splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 3 and not line.startswith("company\t"):
+            url = parts[2]
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            jobs.append({
+                "company": parts[0],
+                "title": parts[1],
+                "url": url,
+                "location": parts[3] if len(parts) > 3 else "",
+            })
+    return jobs
+
+
+_scan_cache: list[dict] = []
+
+
+def _refresh_scan_cache():
+    global _scan_cache
+    _scan_cache = _load_scan_history()
+    _refresh_statuses()
+    return _scan_cache
+
+
+def _get_companies(status_filter="new") -> list[str]:
+    if not _scan_cache:
+        _refresh_scan_cache()
+    jobs = _scan_cache
+    if status_filter != "all":
+        jobs = [j for j in jobs if _job_statuses.get(j["url"], "new") == status_filter]
+    return sorted(set(j["company"] for j in jobs))
+
+
+def _get_job_choices_for_company(company: str, status_filter: str = "new") -> gr.update:
+    if not company:
+        return gr.update(choices=[], value=[])
+    jobs = [j for j in _scan_cache if j["company"] == company]
+    if status_filter != "all":
+        jobs = [j for j in jobs if _job_statuses.get(j["url"], "new") == status_filter]
+    choices = [f"{j['title']} | {j['location'] or 'Remote'}" for j in jobs]
+    return gr.update(choices=choices, value=[])
+
+
+def _get_urls_for_jobs(company: str, job_choices: list[str]) -> str:
+    if not company or not job_choices:
+        return ""
+    urls = []
+    for choice in job_choices:
+        title = choice.rsplit(" | ", 1)[0]
+        for j in _scan_cache:
+            if j["company"] == company and j["title"] == title:
+                urls.append(j["url"])
+                break
+    return "\n".join(urls)
+
+
+def _on_status_or_company_change(status_filter, company):
+    """When status filter or company changes, update company list and job list."""
+    companies = _get_companies(status_filter)
+    # If current company not in filtered list, reset
+    if company not in companies:
+        company = None
+    jobs_update = _get_job_choices_for_company(company, status_filter) if company else gr.update(choices=[], value=[])
+    return gr.update(choices=companies, value=company), jobs_update, ""
+
+
+def _on_jobs_change(company, job_choices):
+    urls = _get_urls_for_jobs(company, job_choices)
+    multi = len(job_choices) > 1
+    return urls, gr.update(interactive=not multi), gr.update(interactive=not multi)
+
+
+def _generate_for_scanned_jobs(urls_text, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key):
+    """Fetch JDs and generate resumes for multiple scanned job URLs."""
+    if not urls_text.strip():
+        return "❌ No jobs selected. Pick a company and select jobs first.", ""
+    urls = [u.strip() for u in urls_text.strip().splitlines() if u.strip()]
+    all_logs, last_feedback = [], ""
+    for i, url in enumerate(urls, 1):
+        all_logs.append(f"{'='*60}\n📌 Job {i}/{len(urls)}: {url}\n{'='*60}")
+        jd = fetch_jd_from_url(url)
+        if not jd or jd.startswith("❌"):
+            all_logs.append(f"❌ Could not fetch JD from {url}\n")
+            continue
+        log, feedback = generate(jd, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key)
+        all_logs.append(log + "\n")
+        if feedback:
+            last_feedback = feedback
+    return "\n".join(all_logs), last_feedback
+
+
+def _unified_generate(jd_text, selected_urls, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key):
+    urls = [u.strip() for u in selected_urls.strip().splitlines() if u.strip()]
+    if len(urls) > 1:
+        return _generate_for_scanned_jobs(selected_urls, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key)
+    if jd_text.strip():
+        return generate(jd_text, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key)
+    if len(urls) == 1:
+        jd = fetch_jd_from_url(urls[0])
+        if jd and not jd.startswith("❌"):
+            return generate(jd, candidate_yaml, min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key)
+        return f"❌ Could not fetch JD from {urls[0]}", ""
+    return "❌ No job description provided.", ""
+
+
+def _run_scan():
+    """Run the job scanner and return status message."""
+    import subprocess
+    print("🔍 Starting job scan...")
+    result = subprocess.run(
+        ["python3", "scan_jobs.py", "scan"],
+        capture_output=False, text=True, cwd=str(Path(__file__).parent),
+    )
+    _refresh_scan_cache()
+    return f"✅ Scan complete. {len(_scan_cache)} jobs in history."
+
+
+def _generate_single_job(url: str, company: str, title: str, min_score: int, max_iter: int,
+                         llm_choice: str, gemini_key: str, openai_key: str, claude_key: str) -> str:
+    """Generate resume for a single job. Saves to per-job folder. Returns status line."""
+    from src.rag_chain import set_llm_provider, generate_resume_structured, generate_resume, score_resume, refine_resume
+    from src.vector_store import ensure_search_pipeline, search_resumes
+    from src.structured_writer import save_structured_docx
+    from src.docx_writer import save_resume_docx
+    from src.candidate import load_candidate, get_sections
+    import time as _time
+
+    # Set LLM
+    if llm_choice == "Gemini (API)":
+        set_llm_provider("gemini", gemini_key)
+    elif llm_choice == "ChatGPT (API)":
+        set_llm_provider("openai", openai_key)
+    elif llm_choice == "Claude (API)":
+        set_llm_provider("claude", claude_key)
+    else:
+        set_llm_provider("ollama")
+
+    ensure_search_pipeline()
+    t0 = _time.time()
+
+    # Fetch JD
+    jd = fetch_jd_from_url(url)
+    if not jd or jd.startswith("❌"):
+        return f"❌ {title}: could not fetch JD"
+
+    candidate_yaml = _load_candidate_yaml()
+
+    # Search for reference resumes (fast, no LLM)
+    results = search_resumes(jd, k=3)
+
+    # Generate directly (skip scoring existing — these are new jobs)
+    structured_data, skills, experience = generate_resume_structured(jd, results=results, candidate_yaml=candidate_yaml)
+    if structured_data:
+        resume = _structured_to_text(structured_data)
+    else:
+        resume, skills, experience = generate_resume(jd, results=results, candidate_yaml=candidate_yaml)
+        structured_data = None
+
+    # Score once
+    score, feedback, parsed = score_resume(resume, jd)
+
+    # Refine once if below threshold
+    if score < min_score and max_iter > 0:
+        resume = refine_resume(resume, jd, parsed, skills, experience)
+        score2, feedback2, _ = score_resume(resume, jd)
+        if score2 > score:
+            score, feedback = score2, feedback2
+            structured_data = None
+
+    # Save to per-job folder
+    safe_company = re.sub(r"[^\w\s-]", "", company).strip().replace(" ", "_")
+    safe_title = re.sub(r"[^\w\s-]", "", title)[:50].strip().replace(" ", "_")
+    output_dir = Path(RESUME_FOLDER) / safe_company / safe_title
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / "resume.docx"
+    if structured_data:
+        candidate = load_candidate(candidate_yaml)
+        sections = get_sections(candidate)
+        save_structured_docx(structured_data, str(output_path), sections=sections)
+    else:
+        save_resume_docx(resume, str(output_path))
+
+    # Write details.txt
+    details = f"ATS Score: {score}/100\nJob URL: {url}\n\nATS Recommendation:\n{feedback}\n\n{'='*60}\nJob Description:\n{'='*60}\n{jd}"
+    (output_dir / "details.txt").write_text(details)
+
+    # Update status
+    _job_statuses[url] = "generated"
+    _save_job_statuses(_job_statuses)
+
+    elapsed = _time.time() - t0
+    return f"✅ {title}: {score}/100 ({elapsed:.0f}s) → {output_dir}"
+
+    return f"✅ {title}: {score}/100 → {output_dir}"
+
+
+def _generate_parallel(urls_text: str, company: str, min_score: int, max_iter: int,
+                       llm_choice: str, gemini_key: str, openai_key: str, claude_key: str):
+    """Generate resumes for selected jobs in parallel (5 threads)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if not urls_text.strip():
+        return "❌ No jobs selected."
+
+    urls = [u.strip() for u in urls_text.strip().splitlines() if u.strip()]
+
+    # Map URLs to titles
+    url_to_title = {}
+    for j in _scan_cache:
+        if j["url"] in urls:
+            url_to_title[j["url"]] = j["title"]
+
+    results = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(
+                _generate_single_job, url, company, url_to_title.get(url, "Unknown"),
+                min_score, max_iter, llm_choice, gemini_key, openai_key, claude_key
+            ): url for url in urls
+        }
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception as e:
+                url = futures[future]
+                results.append(f"❌ {url_to_title.get(url, url)}: {e}")
+
+    return "\n".join(results)
 
 
 from typing import Optional
@@ -65,6 +344,29 @@ def _extract_jsonld_job(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
+def _clean_jd_text(text: str, max_chars: int = 5000) -> str:
+    """Clean up extracted JD text: strip noise, collapse whitespace, truncate."""
+    # Remove leftover HTML entities
+    text = re.sub(r"&[a-zA-Z]+;", " ", text)
+    # Remove lines that are just symbols, very short nav items, or empty
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or len(line) < 3:
+            continue
+        # Skip lines that are just punctuation/symbols
+        if re.match(r'^[\W\d\s]{1,10}$', line):
+            continue
+        lines.append(line)
+    text = "\n".join(lines)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # Truncate
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n[... truncated]"
+    return text.strip()
+
+
 def fetch_jd_from_url(url: str) -> str:
     """Scrape job description text from a URL. Tries JSON-LD first, then plain HTML."""
     if not url or not url.strip():
@@ -77,14 +379,14 @@ def fetch_jd_from_url(url: str) -> str:
         # Try JSON-LD structured data first (works for most job sites)
         jd = _extract_jsonld_job(soup)
         if jd:
-            return jd
+            return _clean_jd_text(jd)
 
         # Fallback: plain HTML text extraction
-        for tag in soup(["script", "style", "nav", "header", "footer", "iframe"]):
+        for tag in soup(["script", "style", "nav", "header", "footer", "iframe",
+                         "noscript", "svg", "form", "button", "input"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text
+        return _clean_jd_text(text)
     except Exception as e:
         return f"❌ Failed to fetch: {e}"
 
@@ -356,115 +658,219 @@ def clear_index():
     return "🗑️ Index cleared. All resumes removed."
 
 
-with gr.Blocks(title="ATS Resume Generator", theme=gr.themes.Soft()) as app:
+with gr.Blocks(title="ATS Resume Generator") as app:
     gr.Markdown("# 📄 ATS Resume Generator")
-    gr.Markdown("Generate ATS-optimized resumes from job descriptions using your existing resumes.")
+    _keys = _load_api_keys()
 
-    with gr.Row():
-        # --- Column 1: Settings ---
-        with gr.Column(scale=1, min_width=220):
-            gr.Markdown("### ⚙️ Settings")
-            _keys = _load_api_keys()
-            llm_provider = gr.Radio(
-                choices=["Ollama (Local)", "Gemini (API)", "ChatGPT (API)", "Claude (API)"],
-                value="Ollama (Local)",
-                label="LLM Provider",
-            )
-            gemini_key = gr.Textbox(
-                label="Gemini API Key",
-                type="password",
-                value=_keys.get("gemini", ""),
-                placeholder="Paste your API key or set in api_keys.yml",
-                visible=False,
-            )
-            openai_key = gr.Textbox(
-                label="OpenAI API Key",
-                type="password",
-                value=_keys.get("openai", ""),
-                placeholder="Paste your API key or set in api_keys.yml",
-                visible=False,
-            )
-            claude_key = gr.Textbox(
-                label="Anthropic API Key",
-                type="password",
-                value=_keys.get("anthropic", ""),
-                placeholder="Paste your API key or set in api_keys.yml",
-                visible=False,
-            )
-            llm_provider.change(
-                fn=lambda p: (
-                    gr.update(visible=p == "Gemini (API)"),
-                    gr.update(visible=p == "ChatGPT (API)"),
-                    gr.update(visible=p == "Claude (API)"),
-                ),
-                inputs=llm_provider,
-                outputs=[gemini_key, openai_key, claude_key],
-            )
-            min_score = gr.Slider(50, 100, value=MIN_ATS_SCORE, step=5, label="Minimum ATS Score")
-            max_iter = gr.Slider(1, 5, value=MAX_ITERATIONS, step=1, label="Max Refinement Iterations")
-            gr.Markdown("---")
-            gr.Markdown("### 👤 Candidate Profile")
-            candidate_editor = gr.Textbox(
-                label="candidate.yml",
-                value=_load_candidate_yaml,
-                lines=15,
-                placeholder="Edit your contact, education, and certifications here...",
-            )
-            save_candidate_btn = gr.Button("💾 Save")
-            gr.Markdown("---")
-            clear_btn = gr.Button("🗑️ Clear Index", variant="stop")
-            ingest_log_box = gr.Textbox(label="Log", lines=8, interactive=False)
-            save_candidate_btn.click(fn=_save_candidate_yaml, inputs=candidate_editor, outputs=ingest_log_box)
-            clear_btn.click(fn=clear_index, outputs=ingest_log_box)
+    # Shared state for LLM settings across pages
+    llm_state = gr.State("Ollama (Local)")
+    gemini_state = gr.State(_keys.get("gemini", ""))
+    openai_state = gr.State(_keys.get("openai", ""))
+    claude_state = gr.State(_keys.get("anthropic", ""))
+    score_state = gr.State(MIN_ATS_SCORE)
+    iter_state = gr.State(MAX_ITERATIONS)
 
-        # --- Column 2: Upload + JD ---
-        with gr.Column(scale=2):
-            gr.Markdown("### 📁 Upload Resumes")
-            with gr.Tab("Files"):
-                upload_files = gr.File(
-                    label="Select PDF/DOCX files",
-                    file_count="multiple",
-                    file_types=[".pdf", ".docx"],
-                )
-                ingest_files_btn = gr.Button("📤 Ingest Files")
-            with gr.Tab("Folder"):
-                upload_folder = gr.File(
-                    label="Select a folder",
-                    file_count="directory",
-                )
-                ingest_folder_btn = gr.Button("📤 Ingest Folder")
-            ingest_files_btn.click(fn=ingest_resumes, inputs=upload_files, outputs=ingest_log_box)
-            ingest_folder_btn.click(fn=ingest_resumes, inputs=upload_folder, outputs=ingest_log_box)
+    with gr.Tabs():
 
-            gr.Markdown("---")
-            gr.Markdown("### 📝 Job Description")
+        # ===== PAGE 1: Settings =====
+        with gr.Tab("👤 Candidate Settings & Profile"):
             with gr.Row():
-                jd_url = gr.Textbox(
-                    label="Job URL",
-                    placeholder="https://...",
-                    lines=1,
-                    scale=4,
-                )
-                fetch_btn = gr.Button("🔗 Fetch", scale=1)
-            jd_input = gr.Textbox(
-                label="Job Description",
-                lines=12,
-                placeholder="Paste the full job description here or fetch from URL above...",
+                # Left: LLM provider + candidate profile
+                with gr.Column():
+                    gr.Markdown("### LLM Provider")
+                    gemini_key = gr.Textbox(label="Gemini API Key", type="password", value=_keys.get("gemini", ""))
+                    openai_key = gr.Textbox(label="OpenAI API Key", type="password", value=_keys.get("openai", ""))
+                    claude_key = gr.Textbox(label="Anthropic API Key", type="password", value=_keys.get("anthropic", ""))
+                    save_keys_btn = gr.Button("💾 Save API Keys")
+
+                    def _save_api_keys(gemini, openai_k, claude):
+                        import yaml
+                        data = {}
+                        if gemini:
+                            data["gemini"] = gemini
+                        if openai_k:
+                            data["openai"] = openai_k
+                        if claude:
+                            data["anthropic"] = claude
+                        API_KEYS_FILE.write_text(yaml.dump(data, default_flow_style=False))
+                        return "✅ API keys saved"
+
+                    gr.Markdown("---")
+                    gr.Markdown("### 👤 Candidate Profile")
+                    candidate_editor = gr.Textbox(label="candidate.yml", value=_load_candidate_yaml(), lines=12)
+                    save_candidate_btn = gr.Button("💾 Save Profile")
+
+                # Right: reference resumes + clear index + log
+                with gr.Column():
+                    gr.Markdown("### 📁 Reference Resumes")
+                    upload_files = gr.File(label="Select PDF/DOCX files", file_count="multiple", file_types=[".pdf", ".docx"])
+                    ingest_files_btn = gr.Button("📤 Ingest Files")
+                    upload_folder = gr.File(label="Select a folder", file_count="directory")
+                    ingest_folder_btn = gr.Button("📤 Ingest Folder")
+                    clear_btn = gr.Button("🗑️ Clear Index", variant="stop")
+                    gr.Markdown("---")
+                    settings_log = gr.Textbox(label="Log", lines=5, interactive=False)
+
+            # Event wiring (outside Row so components are all defined)
+            save_keys_btn.click(fn=_save_api_keys, inputs=[gemini_key, openai_key, claude_key], outputs=settings_log, queue=False)
+            save_candidate_btn.click(fn=_save_candidate_yaml, inputs=candidate_editor, outputs=settings_log, queue=False)
+            ingest_files_btn.click(fn=ingest_resumes, inputs=upload_files, outputs=settings_log)
+            ingest_folder_btn.click(fn=ingest_resumes, inputs=upload_folder, outputs=settings_log)
+            clear_btn.click(fn=clear_index, outputs=settings_log, queue=False)
+
+        # ===== PAGE 2: Scan =====
+        with gr.Tab("🔍 Scan"):
+            with gr.Row():
+                # Left: portals.yml editor
+                with gr.Column(scale=2):
+                    gr.Markdown("### 📝 portals.yml")
+                    portals_editor = gr.Textbox(
+                        label="portals.yml",
+                        value=Path(__file__).parent.joinpath("portals.yml").read_text() if Path(__file__).parent.joinpath("portals.yml").exists() else "",
+                        lines=25,
+                    )
+                    save_portals_btn = gr.Button("💾 Save portals.yml")
+                    portals_log = gr.Textbox(label="Log", lines=2, interactive=False)
+
+                    def _save_portals(text):
+                        import yaml
+                        try:
+                            yaml.safe_load(text)
+                        except yaml.YAMLError as e:
+                            return f"❌ Invalid YAML — not saved.\n{e}"
+                        Path(__file__).parent.joinpath("portals.yml").write_text(text)
+                        return "✅ Saved portals.yml"
+
+                    save_portals_btn.click(fn=_save_portals, inputs=portals_editor, outputs=portals_log, queue=False)
+
+                # Right: scan controls + results
+                with gr.Column(scale=4):
+                    gr.Markdown("### Scan Job Portals")
+                    gr.Markdown("Scan all configured portals for new listings. Detailed logs appear in the console.")
+                    scan_btn = gr.Button("🔄 Run Scan", variant="primary")
+                    scan_output = gr.Textbox(label="Results", lines=25, max_lines=50, interactive=False)
+
+                    def _run_scan_ui():
+                        import subprocess
+                        t0 = time.time()
+                        result = subprocess.run(
+                            ["python3", "scan_jobs.py", "scan"],
+                            capture_output=True, text=True, cwd=str(Path(__file__).parent),
+                        )
+                        elapsed = time.time() - t0
+                        _refresh_scan_cache()
+                        output = result.stdout
+                        lines = output.strip().splitlines()
+                        summary = [f"✅ Scan complete ({elapsed:.1f}s)", ""]
+                        for line in lines:
+                            if "Total fetched:" in line or "After filtering:" in line or "New jobs:" in line:
+                                summary.append(line.strip())
+                        new_jobs = [j for j in _scan_cache if _job_statuses.get(j["url"], "new") == "new"]
+                        if new_jobs:
+                            from collections import Counter
+                            counts = Counter(j["company"] for j in new_jobs)
+                            summary.append(f"\n📊 {len(new_jobs)} new jobs across {len(counts)} companies:")
+                            for company, count in counts.most_common(10):
+                                summary.append(f"  • {company} ({count})")
+                            if len(counts) > 10:
+                                summary.append(f"  • ... and {len(counts) - 10} more")
+                        return "\n".join(summary)
+
+                    scan_btn.click(fn=_run_scan_ui, outputs=scan_output)
+
+        # ===== PAGE 3: Job Board =====
+        with gr.Tab("📋 Job Board"):
+            with gr.Row():
+                # Left sidebar: generation settings
+                with gr.Column(scale=1, min_width=180):
+                    gr.Markdown("### ⚙️ Generation")
+                    jb_llm = gr.Radio(
+                        choices=["Ollama (Local)", "Gemini (API)", "ChatGPT (API)", "Claude (API)"],
+                        value="Ollama (Local)", label="LLM Provider",
+                    )
+                    min_score = gr.Slider(50, 100, value=MIN_ATS_SCORE, step=5, label="Min ATS Score")
+                    max_iter = gr.Slider(1, 5, value=MAX_ITERATIONS, step=1, label="Max Iterations")
+
+                # Right: job board
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        jb_company = gr.Dropdown(choices=_get_companies("new"), label="Company", interactive=True, scale=4)
+                        jb_refresh = gr.Button("🔄", size="sm", scale=0, min_width=40)
+
+                    jb_jobs = gr.CheckboxGroup(choices=[], label="Jobs", interactive=True)
+                    jb_urls = gr.Textbox(label="Selected Job URLs", interactive=False, lines=2)
+
+                    with gr.Row():
+                        jb_generate = gr.Button("🚀 Generate Resumes", variant="primary")
+                        jb_discard = gr.Button("🗑 Discard Selected")
+                        jb_mark_applied = gr.Button("✅ Mark Applied")
+                        jb_view_jd = gr.Button("👁 View JD", size="sm")
+
+                    jb_jd_preview = gr.Textbox(label="Job Description", lines=10, visible=False, interactive=False)
+                    jb_progress = gr.Textbox(label="Progress", lines=8, interactive=False)
+
+            # --- Job Board wiring ---
+            def _jb_refresh_all():
+                _refresh_scan_cache()
+                companies = _get_companies("new")
+                return gr.update(choices=companies, value=None), gr.update(choices=[], value=[]), ""
+
+            def _jb_company_change(company):
+                return _get_job_choices_for_company(company, "new")
+
+            def _jb_jobs_change(company, job_choices):
+                return _get_urls_for_jobs(company, job_choices)
+
+            def _jb_view(urls):
+                if not urls or not urls.strip():
+                    return gr.update(visible=False, value="")
+                url = urls.splitlines()[0]
+                jd = fetch_jd_from_url(url)
+                return gr.update(visible=True, value=jd)
+
+            def _jb_discard(urls_text):
+                msg = _set_job_status(urls_text, "discarded")
+                companies = _get_companies("new")
+                return msg, gr.update(choices=companies), gr.update(choices=[], value=[]), ""
+
+            def _jb_apply(urls_text):
+                msg = _set_job_status(urls_text, "applied")
+                companies = _get_companies("new")
+                return msg, gr.update(choices=companies), gr.update(choices=[], value=[]), ""
+
+            def _jb_gen(urls_text, company, llm, gemini, openai_k, claude, score, iters):
+                return _generate_parallel(urls_text, company, score, iters, llm, gemini, openai_k, claude)
+
+            jb_refresh.click(fn=_jb_refresh_all, outputs=[jb_company, jb_jobs, jb_urls], queue=False)
+            jb_company.change(fn=_jb_company_change, inputs=jb_company, outputs=jb_jobs, queue=False)
+            jb_jobs.change(fn=_jb_jobs_change, inputs=[jb_company, jb_jobs], outputs=jb_urls, queue=False)
+            jb_view_jd.click(fn=_jb_view, inputs=jb_urls, outputs=jb_jd_preview)
+            jb_discard.click(fn=_jb_discard, inputs=jb_urls, outputs=[jb_progress, jb_company, jb_jobs, jb_urls], queue=False)
+            jb_mark_applied.click(fn=_jb_apply, inputs=jb_urls, outputs=[jb_progress, jb_company, jb_jobs, jb_urls], queue=False)
+            jb_generate.click(
+                fn=_jb_gen,
+                inputs=[jb_urls, jb_company, jb_llm, gemini_key, openai_key, claude_key, min_score, max_iter],
+                outputs=jb_progress,
             )
+
+        # ===== PAGE 4: Manual Resume =====
+        with gr.Tab("📄 Manual Resume"):
+            gr.Markdown("### Paste a job description to generate a one-off resume")
+            with gr.Row():
+                jd_url = gr.Textbox(label="Job URL", placeholder="https://...", lines=1, scale=4)
+                fetch_btn = gr.Button("🔗 Fetch", scale=1)
+            jd_input = gr.Textbox(label="Job Description", lines=12, placeholder="Paste the full job description here or fetch from URL above...")
             fetch_btn.click(fn=fetch_jd_from_url, inputs=jd_url, outputs=jd_input)
-            generate_btn = gr.Button("🚀 Generate Resume", variant="primary")
+            manual_generate_btn = gr.Button("🚀 Generate Resume", variant="primary")
 
-        # --- Column 3: Generated Resume ---
-        with gr.Column(scale=3):
-            gr.Markdown("### 📄 Generated Resume")
-            ats_feedback = gr.Textbox(label="📝 ATS Recommendation (for manual refinement)", lines=10, interactive=False)
             gen_log = gr.Textbox(label="Pipeline Log", lines=8, interactive=False)
+            ats_feedback = gr.Textbox(label="ATS Recommendation", lines=8, interactive=False)
 
-    generate_btn.click(
-        fn=generate,
-        inputs=[jd_input, candidate_editor, min_score, max_iter, llm_provider, gemini_key, openai_key, claude_key],
-        outputs=[gen_log, ats_feedback],
-    )
+            manual_generate_btn.click(
+                fn=generate,
+                inputs=[jd_input, candidate_editor, min_score, max_iter, jb_llm, gemini_key, openai_key, claude_key],
+                outputs=[gen_log, ats_feedback],
+            )
 
 if __name__ == "__main__":
-    app.launch()
+    app.launch(theme=gr.themes.Soft())

@@ -8,3 +8,5 @@ __pycache__/
 .idea/
 .vscode/
 api_keys.yml
+.venv
+data/

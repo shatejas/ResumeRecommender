@@ -1,0 +1,373 @@
+# Job portal scanner configuration.
+# The scanner checks these sources for new job listings matching your profile.
+
+# --- Location Filter ---
+# Only show jobs in these countries. Leave empty to show all locations.
+# Also matches "Remote" if include_remote is true.
+location_filter:
+  countries:
+    - United States
+    - US
+    - USA
+  include_remote: true
+
+# --- Sponsorship Filter ---
+# Set to true if you need visa sponsorship.
+# Jobs that explicitly say "no sponsorship" will be filtered out.
+needs_sponsorship: true
+
+# --- Title Filter ---
+# Applied to ALL discovered jobs regardless of source.
+# At least one positive keyword must match. Zero negative keywords can match.
+title_filter:
+  positive:
+    - AI
+    - LLM
+    - Agent
+    - Agentic
+    - GenAI
+    - Generative AI
+    - NLP
+    - LLMOps
+    - MLOps
+    - Voice AI
+    - Conversational AI
+    - Speech
+    - Forward Deployed
+    - Deployed Engineer
+  # -- Automation roles --
+    - Automation
+    - Hyperautomation
+    - Low-Code
+    - No-Code
+    - GTM Engineer
+    - RevOps
+    - data analyst
+    - business intelligence
+    - business
+    - analytics engineer
+    - data engineer
+  negative:
+    - affairs
+    - intern
+    - director
+    - vice president
+    - SDE
+    - vp
+    - principal
+    - staff
+    - Android
+    - iOS
+    - Manager
+    - Sales
+    - Claims
+    - Software Engineer
+    - data scientist
+    - Phd
+    - Legal
+    - Partner
+    - Marketing
+    - Campaign
+    - Licensing
+    - security
+    - Compliance
+    - Recruiter
+    - Talent
+    - HR
+    - Office Administrator
+    - Operations
+    - Product Manager
+    - Product Owner
+    - DevOps
+    - Site Reliability
+    - SRE
+    - Account Executive
+    - Account
+    - Finance
+    - Designer
+    - Leader
+    - Research
+    - Researcher
+    - scientist
+    - program
+    - success engineer
+    - support engineer
+    - solutions engineer
+    - solutions architect
+    - solutions specialist
+    - Product Lead
+    - AI at Google
+    - Application Engineer
+    - Hiring
+    - Business Development Represent
+    - Solution Area Specialist
+    - fullstack
+    - AI & Hiring Experience
+    - business Development Represent
+    - External Affairs
+    - contract
+
+
+# --- Tracked Companies ---
+# Direct ATS API calls for reliable, structured job data.
+# Supported ATS: greenhouse, lever, ashby, bamboohr, teamtailor
+tracked_companies:
+  # --- FAANG / Big Tech ---
+  - name: Google
+    careers_url: https://www.google.com/about/careers/applications/jobs/results
+  - name: Amazon
+    careers_url: https://www.amazon.jobs/en/search
+  - name: Apple
+    careers_url: https://jobs.apple.com/en-us/search
+  - name: Meta
+    careers_url: https://www.metacareers.com/jobs
+  - name: Netflix
+    ats: eightfold
+    board_token: "https://explore.jobs.netflix.net|netflix.com"
+    careers_url: https://explore.jobs.netflix.net/careers
+  - name: Microsoft
+    careers_url: https://careers.microsoft.com/us/en/search-results
+
+  # --- AI Companies ---
+  - name: OpenAI
+    ats: ashby
+    board_token: openai
+    careers_url: https://openai.com/careers/search
+  - name: Anthropic
+    ats: greenhouse
+    board_token: anthropic
+    careers_url: https://www.anthropic.com/careers/jobs
+  - name: DeepMind
+    careers_url: https://deepmind.google/about/careers
+  - name: Cohere
+    ats: ashby
+    board_token: cohere
+    careers_url: https://jobs.ashbyhq.com/cohere
+  - name: Mistral AI
+    ats: lever
+    board_token: mistral
+    careers_url: https://mistral.ai/careers
+  - name: Hugging Face
+    ats: workable
+    board_token: huggingface
+    careers_url: https://apply.workable.com/huggingface/
+  - name: Stability AI
+    ats: greenhouse
+    board_token: stabilityai
+  - name: Perplexity
+    ats: ashby
+    board_token: perplexity
+  - name: Scale AI
+    ats: greenhouse
+    board_token: scaleai
+  - name: Databricks
+    ats: greenhouse
+    board_token: databricks
+    careers_url: https://www.databricks.com/company/careers/open-positions
+  - name: Anyscale
+    ats: ashby
+    board_token: anyscale
+    careers_url: https://jobs.ashbyhq.com/anyscale
+
+  # --- Top Tech ---
+  - name: Stripe
+    ats: greenhouse
+    board_token: stripe
+    careers_url: https://stripe.com/jobs/search
+  - name: Airbnb
+    ats: greenhouse
+    board_token: airbnb
+    careers_url: https://careers.airbnb.com
+  - name: Notion
+    ats: ashby
+    board_token: notion
+    careers_url: https://www.notion.com/careers
+  - name: Figma
+    ats: greenhouse
+    board_token: figma
+  - name: Snowflake
+    careers_url: https://careers.snowflake.com/us/en/search-results
+  - name: Confluent
+    careers_url: https://careers.confluent.io/jobs
+  - name: Datadog
+    ats: greenhouse
+    board_token: datadog
+  - name: Elastic
+    ats: greenhouse
+    board_token: elastic
+  - name: MongoDB
+    ats: greenhouse
+    board_token: mongodb
+  - name: Cloudflare
+    ats: greenhouse
+    board_token: cloudflare
+  - name: Vercel
+    ats: greenhouse
+    board_token: vercel
+  - name: Uber
+    ats: uber
+    board_token: uber
+  - name: Lyft
+    ats: greenhouse
+    board_token: lyft
+  - name: Spotify
+    ats: spotify
+    board_token: spotify
+  - name: Salesforce
+    careers_url: https://careers.salesforce.com/en/jobs
+  - name: Adobe
+    careers_url: https://careers.adobe.com/us/en/search-results
+
+  # --- Finance / Fintech ---
+  - name: Goldman Sachs
+    careers_url: https://higher.gs.com/roles
+  - name: JPMorgan Chase
+    careers_url: https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/requisitions
+  - name: Morgan Stanley
+    careers_url: https://morganstanley.eightfold.ai/careers
+  # Fidelity — Cloudflare-protected, blocks all automated access
+  # - name: Fidelity Investments
+  #   careers_url: https://jobs.fidelity.com/en/search-jobs
+  - name: Capital One
+    careers_url: https://www.capitalonecareers.com/search-jobs
+  # Citadel — Cloudflare-protected, no public API
+  # - name: Citadel
+  #   careers_url: https://www.citadel.com/careers/open-opportunities
+  - name: Two Sigma
+    careers_url: https://careers.twosigma.com/careers/OpenRoles
+  - name: Jane Street
+    ats: greenhouse
+    board_token: janestreet
+  - name: Robinhood
+    ats: greenhouse
+    board_token: robinhood
+  - name: Plaid
+    ats: lever
+    board_token: plaid
+  - name: Brex
+    ats: greenhouse
+    board_token: brex
+  - name: Affirm
+    ats: greenhouse
+    board_token: affirm
+  - name: Coinbase
+    ats: greenhouse
+    board_token: coinbase
+  - name: Stripe
+    ats: greenhouse
+    board_token: stripe
+  - name: Square (Block)
+    ats: greenhouse
+    board_token: block
+  - name: Visa
+    ats: smartrecruiters
+    board_token: visa
+  - name: Mastercard
+    careers_url: https://careers.mastercard.com/us/en/search-results
+  - name: Bloomberg
+    careers_url: https://bloomberg.avature.net/careers/SearchJobs
+  - name: Charles Schwab
+    careers_url: https://www.schwabjobs.com/en/search-jobs
+
+  # --- Consulting / IT Services ---
+  - name: Accenture
+    careers_url: https://www.accenture.com/us-en/careers/jobsearch
+  # TCS — ibegin.tcs.com is dead, tcs.com blocks automated access
+  # - name: TCS
+  #   careers_url: https://ibegin.tcs.com/iBegin/jobs/search
+  - name: Infosys
+    careers_url: https://career.infosys.com/joblist
+  - name: Wipro
+    careers_url: https://careers.wipro.com/search-jobs
+  - name: Deloitte
+    careers_url: https://apply.deloitte.com/careers/SearchJobs
+  # McKinsey — blocks all automated access (HTTP2 protocol error)
+  # - name: McKinsey
+  #   careers_url: https://www.mckinsey.com/careers/search-jobs
+
+# --- Search Queries ---
+# Web search for broader discovery beyond tracked companies.
+# Each query is run as a Google search with site filters.
+search_queries:
+  - query: '"data analyst"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"data engineer"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"business analyst"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"business intelligence"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"forward deploy"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"automation"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+  - query: '"agent"'
+    sites:
+      - jobs.lever.co
+      - boards.greenhouse.io
+      - jobs.ashbyhq.com
+    enabled: true
+
+  # --- Direct Career Site Searches ---
+  # type: career_site — uses Playwright to search a company's career page directly
+  # {query} in search_url gets replaced with each keyword from the queries list
+  - type: career_site
+    company: Netflix
+    search_url: "https://explore.jobs.netflix.net/careers?query={query}"
+    queries:
+      - Data Analyst
+      - Data Engineer
+      - Business Intelligence
+      - Business analyst
+    enabled: true
+  - type: career_site
+    company: Amazon
+    search_url: "https://www.amazon.jobs/en/search?base_query={query}"
+    queries:
+      - Data Analyst
+      - Data Engineer
+      - Business Intelligence
+      - Business analyst
+    enabled: true
+  - type: career_site
+    company: Microsoft
+    search_url: "https://careers.microsoft.com/us/en/search-results?keywords={query}"
+    queries:
+      - Data Analyst
+      - Data Engineer
+      - Business Intelligence
+      - Business analyst
+    enabled: true
+  - type: career_site
+    company: Apple
+    search_url: "https://jobs.apple.com/en-us/search?search={query}"
+    queries:
+      - Data Analyst
+      - Data Engineer
+      - Business Intelligence
+      - Business analyst
+    enabled: false

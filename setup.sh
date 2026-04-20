@@ -61,6 +61,7 @@ echo "OpenSearch is up!"
 # 4. Install Python dependencies
 echo -e "\n[4/5] Installing Python dependencies..."
 python3 -m pip install -r requirements.txt
+python3 -m playwright install chromium
 
 # 5. Launch UI
 echo -e "\n[5/5] Launching UI..."

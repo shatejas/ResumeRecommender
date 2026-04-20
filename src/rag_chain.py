@@ -49,7 +49,7 @@ def _parse_feedback(feedback: str) -> dict:
 def _get_llm(temperature: Optional[float] = None):
     if _llm_provider == "gemini" and _api_key:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        kwargs = {"model": "gemini-2.5-flash", "google_api_key": _api_key}
+        kwargs = {"model": "gemini-2.5-flash", "google_api_key": _api_key, "timeout": 120, "max_retries": 3}
         if temperature is not None:
             kwargs["temperature"] = temperature
         return ChatGoogleGenerativeAI(**kwargs)

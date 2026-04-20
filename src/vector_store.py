@@ -155,7 +155,9 @@ def search_resumes(query: str, k: int = 5) -> list[dict]:
     """Hybrid search. Returns list of dicts with source, skills, experience, content."""
     ensure_search_pipeline()
     client = get_client()
-    query_vector = get_embeddings().embed_query(query)
+    # Truncate query for embedding model context limit (nomic-embed-text: ~8192 tokens)
+    truncated_query = query[:2000]
+    query_vector = get_embeddings().embed_query(truncated_query)
 
     # Extract keywords for BM25 to avoid maxClauseCount limit
     bm25_query = _extract_keywords(query)

@@ -37,3 +37,30 @@ class ResumeData(BaseModel):
     certifications: list[str] = Field(default_factory=list, description="Certifications")
     projects: list[ProjectEntry] = Field(default_factory=list, description="Projects")
     custom_sections: dict[str, list[str]] = Field(default_factory=dict, description="Any additional sections as name -> list of items")
+
+    def to_text(self) -> str:
+        """Convert to plain text for ATS scoring."""
+        lines = [self.name, self.contact, "", "SUMMARY", self.summary, "", "SKILLS"]
+        for cat, items in self.skills.items():
+            lines.append(f"{cat}: {items}")
+        lines.append("\nEXPERIENCE")
+        for role in self.experience:
+            lines.append(f"{role.company} | {role.title} | {role.dates}")
+            for b in role.bullets:
+                lines.append(f"- {b}")
+            lines.append("")
+        lines.append("EDUCATION")
+        for edu in self.education:
+            gpa = f", GPA: {edu.gpa}" if edu.gpa else ""
+            lines.append(f"{edu.degree} | {edu.university}{gpa}, {edu.date}")
+        if self.certifications:
+            lines.append("\nCERTIFICATIONS")
+            for cert in self.certifications:
+                lines.append(cert)
+        if self.projects:
+            lines.append("\nPROJECTS")
+            for proj in self.projects:
+                lines.append(proj.name)
+                for b in proj.bullets:
+                    lines.append(f"- {b}")
+        return "\n".join(lines)
